@@ -872,16 +872,44 @@ async fn run_prompt_content(content: &str, state: &mut AppState) -> Result<()> {
 }
 
 fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len.saturating_sub(3)])
+    // Cap by Unicode scalars so multi-byte edit text cannot panic on a mid-char slice.
+    if s.chars().count() <= max_len {
+        return s.to_string();
     }
+    let keep = max_len.saturating_sub(3);
+    let mut out: String = s.chars().take(keep).collect();
+    out.push_str("...");
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn truncate_string_keeps_ascii_short_values() {
+        assert_eq!(truncate_string("hello", 60), "hello");
+        assert_eq!(
+            truncate_string(
+                "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                60
+            ),
+            "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTU..."
+        );
+    }
+
+    #[test]
+    fn truncate_string_does_not_panic_on_multibyte_over_byte_cap() {
+        let s = "á".repeat(40);
+        assert_eq!(truncate_string(&s, 60), s);
+    }
+
+    #[test]
+    fn truncate_string_caps_by_unicode_scalars() {
+        let s = "á".repeat(70);
+        let out = truncate_string(&s, 60);
+        assert_eq!(out, format!("{}...", "á".repeat(57)));
+    }
 
     #[test]
     fn eval_agent_resolves_external_fixture_specs() {
