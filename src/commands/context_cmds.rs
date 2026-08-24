@@ -189,7 +189,8 @@ pub(super) fn cmd_context(args: &str, state: &mut AppState) {
         }
     }
     let last_prompt = last_user_prompt(state).unwrap_or_default();
-    let active_tool_names = select_tool_names(&state.config, &last_prompt);
+    let mut active_tool_names = select_tool_names(&state.config, &last_prompt);
+    active_tool_names.extend(state.extensions.tool_names());
     let base_system_prompt = render_system_prompt_with_memory(
         &state.config,
         &state.backend,
@@ -198,7 +199,9 @@ pub(super) fn cmd_context(args: &str, state: &mut AppState) {
     );
     let system_prompt =
         merge_system_prompt(&base_system_prompt, state.conversation_summary.as_deref());
-    let tools = build_tools_for_names(&state.config, &active_tool_names, None);
+    let mut tools = build_tools_for_names(&state.config, &active_tool_names, None);
+    tools.extend(state.mcp_tools.iter().cloned());
+    tools.extend(state.extensions.tools());
     let tool_defs = to_openai_tools(&tools);
     let budget = measure_prompt_budget(&system_prompt, &state.messages, &tool_defs);
     println!("  {DIM}messages{RESET}  {}", state.messages.len());
@@ -254,14 +257,17 @@ pub(super) async fn cmd_compact(args: &str, state: &mut AppState) -> Result<()> 
         Some(args.parse::<usize>().unwrap_or(12).clamp(4, 80))
     };
     let last_prompt = last_user_prompt(state).unwrap_or_default();
-    let active_tool_names = select_tool_names(&state.config, &last_prompt);
+    let mut active_tool_names = select_tool_names(&state.config, &last_prompt);
+    active_tool_names.extend(state.extensions.tool_names());
     let base_system_prompt = render_system_prompt_with_memory(
         &state.config,
         &state.backend,
         &active_tool_names,
         &last_prompt,
     );
-    let tools = build_tools_for_names(&state.config, &active_tool_names, None);
+    let mut tools = build_tools_for_names(&state.config, &active_tool_names, None);
+    tools.extend(state.mcp_tools.iter().cloned());
+    tools.extend(state.extensions.tools());
     let tool_defs = to_openai_tools(&tools);
 
     println!("  {DIM}Compacting older messages…{RESET}");
@@ -400,6 +406,7 @@ mod tests {
             tests_ran_this_session: false,
             pending_image_attachments: Vec::new(),
             mcp_tools: Vec::new(),
+            extensions: crate::extensions::ExtensionRegistry::default(),
             path_store: PathStore::new(
                 &config.session_dir,
                 &root.join(".sessions/test.jsonl"),

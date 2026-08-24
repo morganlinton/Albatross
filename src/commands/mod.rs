@@ -92,6 +92,7 @@ use crate::warmup::warmup;
 mod config_cmds;
 mod context_cmds;
 mod doctor;
+mod extensions_cmds;
 mod fable;
 mod hooks_cmds;
 mod mcp_cmds;
@@ -198,6 +199,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     ("/mcp", "List or trust project MCP servers"),
     (
+        "/extensions",
+        "List, trust, and start configured out-of-process extensions",
+    ),
+    (
         "/provider",
         "Switch model provider (ollama, lm-studio, mlx, llamacpp, openrouter, openai, anthropic, openai-codex, grok); /backend remains an alias",
     ),
@@ -278,7 +283,7 @@ pub async fn dispatch(input: &str, state: &mut AppState) -> Result<()> {
     let args = parts.next().unwrap_or("").trim().to_string();
 
     match name {
-        "/help" => help(),
+        "/help" => help(state),
         "/setup" => cmd_setup(state).await?,
         "/new" => session::cmd_new(state),
         "/clear" => clear_screen(),
@@ -307,6 +312,7 @@ pub async fn dispatch(input: &str, state: &mut AppState) -> Result<()> {
         "/trace" => config_cmds::cmd_trace(&args, state),
         "/hooks" => hooks_cmds::cmd_hooks(&args, state)?,
         "/mcp" => mcp_cmds::cmd_mcp(&args, state).await?,
+        "/extensions" => extensions_cmds::cmd_extensions(&args, state).await?,
         "/provider" | "/backend" => config_cmds::cmd_backend(&args, state).await?,
         "/theme" => config_cmds::cmd_theme(&args, state),
         "/model" => config_cmds::cmd_model(&args, state).await?,
@@ -338,7 +344,27 @@ pub async fn dispatch(input: &str, state: &mut AppState) -> Result<()> {
         "/autotune" => redirect_to_doctor("/autotune", "autotune"),
         "/recommend" => redirect_to_doctor("/recommend", "recommend"),
         other => {
-            println!("  {DIM}Unknown command: {other}. Type /help.{RESET}");
+            if state.extensions.has_command(other) {
+                let result = state.extensions.execute_command(other, &args).await?;
+                if let Some(message) = result.message.filter(|value| !value.trim().is_empty()) {
+                    println!("{message}");
+                }
+                if let Some(prompt) = result.prompt.filter(|value| !value.trim().is_empty()) {
+                    let auto_verify_tests = state.config.mode == OperatorMode::Ship;
+                    run_user_turn(
+                        state,
+                        TurnOptions {
+                            user_prompt: prompt,
+                            auto_verify_tests,
+                            yolo_approve: false,
+                            source: "extension-command",
+                        },
+                    )
+                    .await?;
+                }
+            } else {
+                println!("  {DIM}Unknown command: {other}. Type /help.{RESET}");
+            }
         }
     }
     Ok(())
@@ -366,9 +392,15 @@ pub fn command_list() -> Vec<(String, String)> {
     cmds
 }
 
-fn help() {
+fn help(state: &AppState) {
     for (n, d) in COMMANDS {
         println!("  {CYAN}{:<12}{RESET} {DIM}{}{RESET}", n, d);
+    }
+    for (name, description) in state.extensions.command_list() {
+        println!(
+            "  {CYAN}{:<12}{RESET} {DIM}{} (extension){RESET}",
+            name, description
+        );
     }
     println!("  {CYAN}{:<12}{RESET} {DIM}Quit Albatross{RESET}", "/exit");
     println!(
@@ -1624,6 +1656,7 @@ mod tests {
             tests_ran_this_session: false,
             pending_image_attachments: Vec::new(),
             mcp_tools: Vec::new(),
+            extensions: crate::extensions::ExtensionRegistry::default(),
             path_store: PathStore::new(
                 &config.session_dir,
                 &root.join(".sessions/test.jsonl"),

@@ -146,10 +146,10 @@ fn scrub_secret_env(command: &mut tokio::process::Command) {
 
 #[async_trait]
 impl Tool for ShellTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "shell"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Execute a shell command and return combined stdout/stderr. Output is truncated at 256KB."
     }
     fn input_schema(&self) -> Value {

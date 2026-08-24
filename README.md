@@ -75,6 +75,9 @@ few that aren't usual:
   summarizing in place.
 - **MCP-native.** Drop servers into `mcpServers` in your config; their tools
   show up as `mcp__<server>__<tool>` to the model on next launch.
+- **Language-neutral extensions.** Trusted subprocesses can register custom
+  model tools, slash commands, and lifecycle event listeners over JSON-RPC.
+  Config changes revoke trust automatically.
 - **`/auth` instead of `.env`.** Paste API keys once into a `0600` file
   under `~/.config/albatross/`. Env vars still win when set.
 - **Approval gates you can live with.** Every mutating call shows you the
@@ -424,6 +427,7 @@ this exact call`. The session cache resets on `/new`.
 /trace on|off          show nested subagent/critic tool calls (indented)
 /hooks                 list, trust, enable, or disable configured hooks
 /mcp                   list or trust project MCP servers
+/extensions            list or trust configured extension processes
 /compare [model]       re-send the last prompt against OpenRouter for A/B
 /fusion on|tool|off    use OpenRouter Fusion alias or attach Fusion to a model
 /route                 open the guided routing menu
@@ -759,6 +763,37 @@ it. Trusted servers start automatically on later launches. Their processes
 receive only a small system environment allowlist plus the explicit `env` block,
 and their tools remain approval-gated with names like `mcp__fs__read_file`.
 JSON-RPC over stdio; no extra dependencies.
+
+### Extensions
+
+Extensions are trusted executable programs that register model tools, slash
+commands, and lifecycle event listeners over newline-delimited JSON-RPC 2.0.
+They use the same configuration-hash trust posture as MCP servers: new or
+changed extension commands are skipped until reviewed.
+
+```json
+{
+  "extensions": {
+    "hello": {
+      "command": "python3",
+      "args": ["examples/extensions/hello.py"],
+      "env": {},
+      "enabled": true
+    }
+  }
+}
+```
+
+```text
+/extensions
+/extensions trust hello
+/hello Morgan
+```
+
+Model tools are namespaced as `ext__<extension>__<tool>`. Extension tool calls
+require approval by default; slash commands cannot replace built-ins. See
+[docs/EXTENSIONS.md](docs/EXTENSIONS.md) for the protocol, security model, and
+runnable Python example.
 
 ### Hooks
 

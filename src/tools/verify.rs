@@ -30,10 +30,10 @@ struct Args {
 
 #[async_trait]
 impl Tool for VerifyTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "verify"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Run the project's test suite (optionally filtered by a name pattern) and return structured pass/fail results. Takes no arbitrary command — only the project's configured tests run. Call this to verify the work actually functions before scoring functionality."
     }
     fn input_schema(&self) -> Value {

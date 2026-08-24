@@ -23,7 +23,7 @@ struct Args {
     steps: Vec<Step>,
 }
 
-fn normalize_status(raw: &str) -> &'static str {
+fn normalize_status(raw: &str) -> &str {
     match raw.trim().to_lowercase().as_str() {
         "in_progress" | "in-progress" | "active" | "doing" => "in_progress",
         "done" | "completed" | "complete" | "finished" => "done",
@@ -33,10 +33,10 @@ fn normalize_status(raw: &str) -> &'static str {
 
 #[async_trait]
 impl Tool for UpdatePlanTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "update_plan"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Record or update a short step-by-step plan for a multi-step task. Call once with all steps before you start, then call again to flip a step's status as you go. Has no side effects. Use it for tasks of 3+ steps; skip it for trivial one-shot requests."
     }
     fn input_schema(&self) -> Value {

@@ -31,10 +31,10 @@ fn is_ignored(rel: &std::path::Path) -> bool {
 
 #[async_trait]
 impl Tool for GlobTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "glob"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Find files by glob pattern. Skips node_modules/.git/dist. Returns up to 1000 paths."
     }
     fn input_schema(&self) -> Value {

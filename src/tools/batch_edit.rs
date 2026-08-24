@@ -35,10 +35,10 @@ fn op_summary(operations: &[BatchEditOperation]) -> String {
 
 #[async_trait]
 impl Tool for BatchEditTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "batch_edit"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Preview or apply coordinated multi-file edits. Always returns a dry-run preview; set dry_run=false to apply after approval."
     }
     fn input_schema(&self) -> Value {

@@ -75,11 +75,11 @@ async fn git_apply(cwd: &std::path::Path, patch: &str, check_only: bool) -> Resu
 
 #[async_trait]
 impl Tool for ApplyPatchTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "apply_patch"
     }
 
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Apply a unified diff patch after validating it with `git apply --check`."
     }
 

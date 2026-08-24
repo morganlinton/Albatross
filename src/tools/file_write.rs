@@ -16,10 +16,10 @@ struct Args {
 
 #[async_trait]
 impl Tool for FileWriteTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "file_write"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Write content to a file. Creates parent directories if needed. Overwrites if the file exists."
     }
     fn input_schema(&self) -> Value {

@@ -23,10 +23,10 @@ const TIMEOUT_SECS: u64 = 15;
 
 #[async_trait]
 impl Tool for WebFetchTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "web_fetch"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Fetch a URL and return the response body as plain text (HTML tags stripped). Use for reading docs or RFCs the agent needs to consult."
     }
     fn input_schema(&self) -> Value {

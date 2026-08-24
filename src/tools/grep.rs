@@ -21,10 +21,10 @@ struct Args {
 
 #[async_trait]
 impl Tool for GrepTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "grep"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Search file contents by regex. Uses ripgrep when available. Returns up to 100 matches."
     }
     fn input_schema(&self) -> Value {

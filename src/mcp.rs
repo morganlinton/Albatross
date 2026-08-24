@@ -454,15 +454,11 @@ impl McpTool {
 
 #[async_trait]
 impl Tool for McpTool {
-    fn name(&self) -> &'static str {
-        // Tool::name returns &'static str, but MCP tool names are runtime.
-        // Leak the String once during construction so the &str lives for
-        // the program lifetime. Acceptable since each tool is constructed
-        // exactly once at session start.
-        Box::leak(self.display_name.clone().into_boxed_str())
+    fn name(&self) -> &str {
+        &self.display_name
     }
-    fn description(&self) -> &'static str {
-        Box::leak(self.description.clone().into_boxed_str())
+    fn description(&self) -> &str {
+        &self.description
     }
     fn input_schema(&self) -> Value {
         self.schema.clone()

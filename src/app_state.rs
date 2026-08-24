@@ -96,6 +96,9 @@ pub struct AppState {
     /// (in `main`) and appended to every turn's tool list. Kept as Arcs so
     /// each turn shares the same live JSON-RPC connection per server.
     pub mcp_tools: Vec<Arc<dyn Tool>>,
+    /// Trusted out-of-process extensions and their tools/commands/event
+    /// subscriptions. The registry owns the child processes for the session.
+    pub extensions: crate::extensions::ExtensionRegistry,
     pub path_store: PathStore,
     pub trace: SharedTurnTrace,
     pub trace_enabled: bool,

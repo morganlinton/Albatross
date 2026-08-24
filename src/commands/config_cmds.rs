@@ -44,6 +44,13 @@ pub(super) fn cmd_config(state: &AppState) {
         state.config.slash_commands
     );
     println!(
+        "  {DIM}extensions{RESET}       configured={} loaded={} tools={} commands={}",
+        state.config.extensions.len(),
+        state.extensions.loaded().len(),
+        state.extensions.tools().len(),
+        state.extensions.command_list().len()
+    );
+    println!(
         "  {DIM}showBanner{RESET}       {}",
         state.config.display.show_banner
     );
@@ -1395,6 +1402,7 @@ mod tests {
             tests_ran_this_session: false,
             pending_image_attachments: Vec::new(),
             mcp_tools: Vec::new(),
+            extensions: crate::extensions::ExtensionRegistry::default(),
             path_store: PathStore::new(
                 &config.session_dir,
                 &root.join(".sessions/test.jsonl"),

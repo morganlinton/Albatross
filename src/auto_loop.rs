@@ -969,6 +969,7 @@ mod tests {
             tests_ran_this_session: false,
             pending_image_attachments: Vec::new(),
             mcp_tools: Vec::new(),
+            extensions: crate::extensions::ExtensionRegistry::default(),
             path_store: PathStore::new(&config.session_dir, &session_path, &config.paths),
             trace: crate::turn_trace::test_trace_for(&session_path),
             trace_enabled: false,

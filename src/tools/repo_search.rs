@@ -21,11 +21,11 @@ struct Args {
 
 #[async_trait]
 impl Tool for RepoSearchTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "repo_search"
     }
 
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Search the local project memory index for relevant files, symbols, headings, imports, and short snippets. Run /index first if the index is missing."
     }
 

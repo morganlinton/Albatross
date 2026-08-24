@@ -16,10 +16,10 @@ struct Args {
 
 #[async_trait]
 impl Tool for ListDirTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "list_dir"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "List directory contents (alphabetical). Up to 500 entries."
     }
     fn input_schema(&self) -> Value {

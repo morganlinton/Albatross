@@ -70,10 +70,10 @@ fn numbered_snippet(content: &str, start: usize, end: usize, context: usize) -> 
 
 #[async_trait]
 impl Tool for FileEditTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "file_edit"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Apply search-and-replace edits to a file. Each old_text must appear exactly once. Returns a unified diff plus the re-read applied state (verified + a line-numbered snippet) so you can confirm the change landed."
     }
     fn input_schema(&self) -> Value {

@@ -208,10 +208,10 @@ pub async fn run_evaluation(
 
 #[async_trait]
 impl Tool for EvaluatorTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "critique"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Delegate an adversarial quality evaluation to a separate read-only critic agent. It inspects the work in the workspace, scores it 0-10 against the configured rubric, and returns a structured verdict (per-criterion scores, weighted total, pass/fail, actionable feedback). The critic cannot edit files or run commands. Use it for an independent grade of completed work."
     }
     fn input_schema(&self) -> Value {

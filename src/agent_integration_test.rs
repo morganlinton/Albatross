@@ -246,6 +246,7 @@ async fn pre_tool_use_hook_block_returns_tool_error() {
             source: "test".into(),
         },
         trace,
+        extensions: None,
     };
 
     let messages = vec![ChatMessage::User {
@@ -350,6 +351,7 @@ async fn pre_tool_use_hook_stop_ends_loop_without_tool_execution() {
             source: "test".into(),
         },
         trace,
+        extensions: None,
     };
 
     let messages = vec![ChatMessage::User {
@@ -466,6 +468,7 @@ async fn pre_tool_use_hook_stop_suppresses_pending_tools_in_same_batch() {
             source: "test".into(),
         },
         trace,
+        extensions: None,
     };
 
     let messages = vec![ChatMessage::User {
@@ -590,6 +593,7 @@ async fn pre_tool_use_hook_rewrite_updates_executed_and_stored_tool_input() {
             source: "test".into(),
         },
         trace,
+        extensions: None,
     };
 
     let messages = vec![ChatMessage::User {
@@ -747,6 +751,7 @@ async fn task_uses_subagent_stop_without_generic_post_tool_use() {
             source: "test".into(),
         },
         trace,
+        extensions: None,
     };
 
     let messages = vec![ChatMessage::User {
@@ -871,6 +876,7 @@ async fn plan_updated_hook_uses_raw_update_plan_output_before_compaction() {
             source: "test".into(),
         },
         trace,
+        extensions: None,
     };
 
     let messages = vec![ChatMessage::User {

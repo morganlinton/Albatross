@@ -23,6 +23,7 @@ mod continuation;
 mod crash_log;
 mod diff_view;
 mod dir_migration;
+mod extensions;
 mod fable_usage;
 mod fix_loop;
 mod handoff;
@@ -426,6 +427,36 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
         trace_guard.begin_turn();
     }
     let hooks = load_runtime_hooks(&config)?;
+    let (trusted_extensions, extension_discovery) =
+        crate::extensions::trusted_configured(&config.extensions, &config.workspace_root);
+    let pending_extensions = extension_discovery
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry.status,
+                crate::extensions::ExtensionTrustStatus::Untrusted
+                    | crate::extensions::ExtensionTrustStatus::Modified
+            )
+        })
+        .count();
+    if pending_extensions > 0 {
+        eprintln!(
+            "{pending_extensions} extension(s) need review and were skipped; trust them interactively with /extensions"
+        );
+    }
+    let reserved_commands = crate::commands::command_list()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    let (extensions, extension_errors) = crate::extensions::spawn_configured(
+        &trusted_extensions,
+        &config.workspace_root,
+        &reserved_commands,
+    )
+    .await;
+    for error in extension_errors {
+        eprintln!("extension: {error}");
+    }
     let hook_context =
         hook_context_for_session(&config, &backend_desc, &model, &session_path, "one-shot", 1);
     let mut out = std::io::stdout();
@@ -433,6 +464,15 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
     let start_payload = hook_context
         .payload(HookEventName::SessionStart)
         .into_value();
+    for error in extensions
+        .emit(
+            HookEventName::SessionStart.key_label(),
+            start_payload.clone(),
+        )
+        .await
+    {
+        eprintln!("extension event: {error}");
+    }
     let start_outcome = dispatch_hook_payload(
         &hooks,
         HookEventName::SessionStart,
@@ -453,6 +493,15 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
         .payload(HookEventName::UserPromptSubmit)
         .insert("prompt", serde_json::json!(prompt.clone()))
         .into_value();
+    for error in extensions
+        .emit(
+            HookEventName::UserPromptSubmit.key_label(),
+            prompt_payload.clone(),
+        )
+        .await
+    {
+        eprintln!("extension event: {error}");
+    }
     let prompt_outcome = dispatch_hook_payload(
         &hooks,
         HookEventName::UserPromptSubmit,
@@ -485,7 +534,8 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
     {
         let _ = build_project_index(&config);
     }
-    let active_tool_names = select_tool_names(&config, &prompt);
+    let mut active_tool_names = select_tool_names(&config, &prompt);
+    active_tool_names.extend(extensions.tool_names());
     let mut hook_contexts = hook_context_messages(HookEventName::SessionStart, &start_outcome);
     hook_contexts.extend(hook_context_messages(
         HookEventName::UserPromptSubmit,
@@ -510,6 +560,7 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
         registry: hooks.clone(),
         context: hook_context.clone(),
         trace: trace.clone(),
+        extensions: Some(extensions.event_dispatcher()),
     };
     let tool_runtime = ToolRuntimeContext {
         trace: trace.clone(),
@@ -517,7 +568,8 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
         agent_events: None,
         hooks: Some(agent_hooks.clone()),
     };
-    let tools = build_tools_for_names(&config, &active_tool_names, Some(&tool_runtime));
+    let mut tools = build_tools_for_names(&config, &active_tool_names, Some(&tool_runtime));
+    tools.extend(extensions.tools());
     let result = run_agent(
         &http,
         &backend_desc,
@@ -573,6 +625,12 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
         .insert("output_tokens", serde_json::json!(result.output_tokens))
         .insert("hit_step_limit", serde_json::json!(result.hit_step_limit))
         .into_value();
+    for error in extensions
+        .emit(HookEventName::Stop.key_label(), stop_payload.clone())
+        .await
+    {
+        eprintln!("extension event: {error}");
+    }
     let stop_outcome = dispatch_hook_payload(
         &hooks,
         HookEventName::Stop,
@@ -591,6 +649,12 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
         let _ = save_message(&session_path, &message);
     }
     let end_payload = hook_context.payload(HookEventName::SessionEnd).into_value();
+    for error in extensions
+        .emit(HookEventName::SessionEnd.key_label(), end_payload.clone())
+        .await
+    {
+        eprintln!("extension event: {error}");
+    }
     let end_outcome = dispatch_hook_payload(
         &hooks,
         HookEventName::SessionEnd,
@@ -843,8 +907,6 @@ async fn main() -> anyhow::Result<()> {
         config.history.max_entries,
         config.history.enabled,
     );
-    // Slash commands (name + description) for the completion menu.
-    let command_names = crate::commands::command_list();
     let session_path = new_session_path(&config.session_dir);
     let session_dir = config.session_dir.clone();
     let paths_config = config.paths.clone();
@@ -887,10 +949,52 @@ async fn main() -> anyhow::Result<()> {
         tests_ran_this_session: false,
         pending_image_attachments: Vec::new(),
         mcp_tools: Vec::new(),
+        extensions: crate::extensions::ExtensionRegistry::default(),
         path_store: PathStore::new(&session_dir, &session_path, &paths_config),
         trace,
         trace_enabled: false,
     };
+
+    if !state.config.extensions.is_empty() {
+        let (trusted, discovery) = crate::extensions::trusted_configured(
+            &state.config.extensions,
+            &state.config.workspace_root,
+        );
+        let pending = discovery
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry.status,
+                    crate::extensions::ExtensionTrustStatus::Untrusted
+                        | crate::extensions::ExtensionTrustStatus::Modified
+                )
+            })
+            .count();
+        if pending > 0 {
+            println!(
+                "  {YELLOW}!{RESET} {DIM}{pending} extension(s) need review and were skipped; run /extensions{RESET}"
+            );
+        }
+        let reserved = crate::commands::command_list()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        let (registry, errors) =
+            crate::extensions::spawn_configured(&trusted, &state.config.workspace_root, &reserved)
+                .await;
+        for error in errors {
+            println!("  {YELLOW}!{RESET} {DIM}extension: {error}{RESET}");
+        }
+        if !registry.loaded().is_empty() {
+            println!(
+                "  {DIM}extensions: {} loaded · {} tool(s) · {} command(s){RESET}",
+                registry.loaded().len(),
+                registry.tools().len(),
+                registry.command_list().len()
+            );
+        }
+        state.extensions = registry;
+    }
 
     if !state.config.mcp_servers.is_empty() {
         let (trusted, discovery) =
@@ -992,6 +1096,11 @@ async fn main() -> anyhow::Result<()> {
         // configured input style.
         println!();
         println!("{}", crate::theme::fade_header("you"));
+        // Rebuild completion entries each prompt so an extension trusted and
+        // started via `/extensions` becomes discoverable immediately.
+        let mut command_names = crate::commands::command_list();
+        command_names.extend(state.extensions.command_list());
+        command_names.sort_by(|a, b| a.0.cmp(&b.0));
         let input = match plain_read_line_with_history_outcome(
             format!(
                 "{}{}{}{} ",

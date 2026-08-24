@@ -629,6 +629,7 @@ mod tests {
             tests_ran_this_session: false,
             pending_image_attachments: Vec::new(),
             mcp_tools: Vec::new(),
+            extensions: crate::extensions::ExtensionRegistry::default(),
             path_store: PathStore::new(
                 &config.session_dir,
                 &root.join(".sessions/test.jsonl"),

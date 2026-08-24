@@ -31,6 +31,7 @@ pub struct AgentHooks {
     pub registry: HookRegistry,
     pub context: HookInvocationContext,
     pub trace: SharedTurnTrace,
+    pub extensions: Option<crate::extensions::ExtensionEventDispatcher>,
 }
 
 #[derive(Debug, Clone)]
@@ -275,6 +276,16 @@ where
         return HookOutcome::default();
     };
     let payload = merge_hook_payload(hooks.context.payload(event).into_value(), fields);
+    if let Some(extensions) = &hooks.extensions {
+        for error in extensions.emit(event.key_label(), payload.clone()).await {
+            on_event(AgentEvent::HookNotice(crate::hooks::HookNotice {
+                event,
+                hook_key: None,
+                level: crate::hooks::HookNoticeLevel::Warning,
+                message: format!("extension event: {error}"),
+            }));
+        }
+    }
     let outcome = dispatch_hook_payload(
         &hooks.registry,
         event,

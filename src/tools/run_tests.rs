@@ -27,10 +27,10 @@ fn default_mode() -> String {
 
 #[async_trait]
 impl Tool for RunTestsTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "run_tests"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Run project tests with structured JSON results. Modes: discover (list framework/files), smart (changed files), all (full suite), pattern (filter by name)."
     }
     fn input_schema(&self) -> Value {

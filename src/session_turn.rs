@@ -352,6 +352,13 @@ pub async fn dispatch_app_hook_with_source(
 ) -> HookOutcome {
     let ctx = hook_context_from_state(state, source);
     let payload = merge_payload_fields(ctx.payload(event).into_value(), fields);
+    for error in state
+        .extensions
+        .emit(event.key_label(), payload.clone())
+        .await
+    {
+        println!("  {YELLOW}!{RESET} {DIM}extension event: {error}{RESET}");
+    }
     let outcome = dispatch_hook_payload(
         &state.hooks,
         event,
@@ -496,7 +503,8 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
     }
     let trimmed = user_prompt.as_str();
 
-    let active_tool_names = select_tool_names(&state.config, trimmed);
+    let mut active_tool_names = select_tool_names(&state.config, trimmed);
+    active_tool_names.extend(state.extensions.tool_names());
     // The system message is the cache prefix; keep it prompt-independent. The
     // prompt-focused repo map is computed here but folded into the current user
     // turn below the cache boundary (see `initial` assembly), not the system
@@ -549,6 +557,7 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
         registry: drain_hook_registry,
         context: drain_hook_context,
         trace: drain_hook_trace,
+        extensions: Some(state.extensions.event_dispatcher()),
     };
     let tool_runtime = ToolRuntimeContext {
         trace: state.trace.clone(),
@@ -558,6 +567,7 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
     };
     let mut tools = build_tools_for_names(&state.config, &active_tool_names, Some(&tool_runtime));
     tools.extend(state.mcp_tools.iter().cloned());
+    tools.extend(state.extensions.tools());
     // The runtime context owns an event-sender clone for nested tools. Keeping
     // this outer clone alive across the drain join prevents the channel from
     // closing after the agent future returns.
@@ -1211,6 +1221,7 @@ mod cost_tests {
             tests_ran_this_session: false,
             pending_image_attachments: Vec::new(),
             mcp_tools: Vec::new(),
+            extensions: crate::extensions::ExtensionRegistry::default(),
             path_store: PathStore::new(&session_dir, &session_path, &paths_config),
             trace,
             trace_enabled: false,

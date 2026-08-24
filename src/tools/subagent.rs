@@ -210,10 +210,10 @@ pub(crate) fn forward_subagent_event(event: AgentEvent) -> AgentEvent {
 
 #[async_trait]
 impl Tool for SubagentTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "task"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Delegate a self-contained, read-only investigation to a subagent and get back only its conclusion. Use this when answering needs reading many files (\"where is X handled?\", \"how does Y flow through the code?\") so the exploration stays out of your context. The subagent cannot edit files or run commands. Give it one clear question."
     }
     fn input_schema(&self) -> Value {

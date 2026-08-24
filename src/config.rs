@@ -722,6 +722,7 @@ pub struct AgentConfig {
     pub openrouter: OpenRouterConfig,
     pub model_system: ModelSystemConfig,
     pub mcp_servers: BTreeMap<String, crate::mcp::McpServerConfig>,
+    pub extensions: BTreeMap<String, crate::extensions::ExtensionConfig>,
     pub hooks: crate::hooks::HookConfig,
 }
 
@@ -804,6 +805,7 @@ impl Default for AgentConfig {
             openrouter: OpenRouterConfig::default(),
             model_system: ModelSystemConfig::default(),
             mcp_servers: BTreeMap::new(),
+            extensions: BTreeMap::new(),
             hooks: crate::hooks::HookConfig::default(),
         }
     }
@@ -850,6 +852,7 @@ struct FileConfig {
     model_system: Option<ModelSystemConfig>,
     #[serde(rename = "mcpServers")]
     mcp_servers: Option<BTreeMap<String, crate::mcp::McpServerConfig>>,
+    extensions: Option<BTreeMap<String, crate::extensions::ExtensionConfig>>,
     hooks: Option<Value>,
 }
 
@@ -1399,6 +1402,9 @@ pub fn load_config() -> AgentConfig {
                     }
                     if let Some(s) = file.mcp_servers {
                         config.mcp_servers = s;
+                    }
+                    if let Some(e) = file.extensions {
+                        config.extensions = e;
                     }
                     if let Some(h) = file.hooks {
                         config.hooks = parse_hooks_config(h, |warning| eprintln!("{warning}"));

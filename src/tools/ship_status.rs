@@ -18,10 +18,10 @@ struct Args {
 
 #[async_trait]
 impl Tool for ShipStatusTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "ship_status"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Read-only git ship readiness snapshot: branch drift, dirty files, diff stats, optional tests, ready_to_ship heuristic."
     }
     fn input_schema(&self) -> Value {

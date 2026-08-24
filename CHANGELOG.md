@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Add a trusted, language-neutral extension API over JSON-RPC stdio. Extension
+  processes can register namespaced model tools, interactive slash commands,
+  and subscriptions to Albatross lifecycle events.
+
 ## [2.3.0] - 2026-08-03
 
 ### Added

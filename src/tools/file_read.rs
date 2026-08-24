@@ -60,10 +60,10 @@ pub(crate) fn b64_encode(input: &[u8]) -> String {
 
 #[async_trait]
 impl Tool for FileReadTool {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "file_read"
     }
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         "Read the contents of a file at the given path. Returns text or, for image files, base64 with mime type."
     }
     fn input_schema(&self) -> Value {

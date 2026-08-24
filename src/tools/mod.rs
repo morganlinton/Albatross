@@ -70,8 +70,8 @@ pub struct ToolPreview {
 
 #[async_trait]
 pub trait Tool: Send + Sync {
-    fn name(&self) -> &'static str;
-    fn description(&self) -> &'static str;
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
     fn input_schema(&self) -> Value;
     fn require_approval(&self, _args: &Value) -> bool {
         false
