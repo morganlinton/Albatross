@@ -50,6 +50,14 @@ pub(super) fn cmd_config(state: &AppState) {
         state.extensions.tools().len(),
         state.extensions.command_list().len()
     );
+    let package_resources = &state.config.package_resources;
+    println!(
+        "  {DIM}packages{RESET}         extensions={} skills={} prompts={} themes={}",
+        package_resources.extensions.len(),
+        package_resources.skills.len(),
+        package_resources.prompts.len(),
+        package_resources.themes.len()
+    );
     println!(
         "  {DIM}showBanner{RESET}       {}",
         state.config.display.show_banner
@@ -134,30 +142,38 @@ pub(super) fn cmd_theme(args: &str, state: &mut AppState) {
             "  {DIM}theme{RESET}     {CYAN}{}{RESET}",
             state.config.display.theme.as_str()
         );
-        println!("  {DIM}available{RESET} cyan, mono, green, amber");
+        let mut available = vec![
+            "cyan".to_string(),
+            "mono".into(),
+            "green".into(),
+            "amber".into(),
+        ];
+        available.extend(state.config.package_resources.themes.keys().cloned());
+        println!("  {DIM}available{RESET} {}", available.join(", "));
         println!("  {DIM}usage{RESET}     /theme <name> {DIM}(saved for this project){RESET}");
         return;
     }
 
-    let Some(preset) = crate::config::ThemePreset::parse(value) else {
+    let is_builtin = crate::config::ThemePreset::parse(value).is_some();
+    if !is_builtin && !state.config.package_resources.themes.contains_key(value) {
         println!(
-            "  {RED}✗{RESET} {DIM}unknown theme: {value} (use cyan, mono, green, or amber){RESET}"
+            "  {RED}✗{RESET} {DIM}unknown theme: {value} (run /theme to list installed themes){RESET}"
         );
         return;
-    };
+    }
 
-    state.config.display.theme = preset;
+    state.config.display.theme = value.to_string();
     crate::theme::init(
         state.config.display.color,
         state.config.display.ascii,
-        preset,
+        value,
     );
     println!(
         "  {GREEN}✓{RESET} {DIM}theme →{RESET} {CYAN}{}{RESET}",
-        preset.as_str()
+        value
     );
     if let Err(e) =
-        crate::config::persist_display_theme(Path::new(crate::config::AGENT_CONFIG_PATH), preset)
+        crate::config::persist_display_theme(Path::new(crate::config::AGENT_CONFIG_PATH), value)
     {
         println!("  {RED}✗{RESET} {DIM}theme applied for this session but could not be saved: {e}{RESET}");
     } else {

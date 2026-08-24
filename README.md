@@ -78,6 +78,9 @@ few that aren't usual:
 - **Language-neutral extensions.** Trusted subprocesses can register custom
   model tools, slash commands, and lifecycle event listeners over JSON-RPC.
   Config changes revoke trust automatically.
+- **Installable packages.** Install npm or Git packages containing extensions,
+  skills, prompt templates, and terminal themes. npm lifecycle scripts stay
+  disabled, and packaged executables still require workspace trust.
 - **`/auth` instead of `.env`.** Paste API keys once into a `0600` file
   under `~/.config/albatross/`. Env vars still win when set.
 - **Approval gates you can live with.** Every mutating call shows you the
@@ -412,7 +415,7 @@ this exact call`. The session cache resets on `/new`.
 /provider <name> [--default] switch provider; --default writes agent.config.json
 /backend <name> [--default]  compatibility alias for /provider
 /model [id] [--default]      list / pick a model; --default pins provider+model
-/theme [name]                show/set cyan, mono, green, or amber palette
+/theme [name]                show/set a built-in or packaged terminal theme
 /tools auto|fixed|<…>  show or set the active tool pool
 /auth                  manage API keys and OAuth credentials
 /login [provider]      sign in (defaults to active OAuth provider)
@@ -428,6 +431,8 @@ this exact call`. The session cache resets on `/new`.
 /hooks                 list, trust, enable, or disable configured hooks
 /mcp                   list or trust project MCP servers
 /extensions            list or trust configured extension processes
+/packages              list installed npm/Git resource packages
+/skills                list namespaced skills from installed packages
 /compare [model]       re-send the last prompt against OpenRouter for A/B
 /fusion on|tool|off    use OpenRouter Fusion alias or attach Fusion to a model
 /route                 open the guided routing menu
@@ -794,6 +799,27 @@ Model tools are namespaced as `ext__<extension>__<tool>`. Extension tool calls
 require approval by default; slash commands cannot replace built-ins. See
 [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for the protocol, security model, and
 runnable Python example.
+
+### Packages
+
+Resource packages can be installed from npm or Git and shared across
+workspaces:
+
+```bash
+albatross install npm:@acme/albatross-tools
+albatross install git:https://github.com/acme/albatross-tools@v1
+albatross list
+albatross update
+albatross remove @acme/albatross-tools
+```
+
+Packages use an `albatross` manifest in `package.json`, or conventional
+`extensions/`, `skills/`, `prompts/`, and `themes/` directories. Skills and
+prompts are namespaced by package; themes appear in `/theme`; extensions enter
+the existing `/extensions` trust flow. npm lifecycle scripts are disabled for
+both npm packages and Git package dependencies. See
+[docs/PACKAGES.md](docs/PACKAGES.md) for the manifest, commands, security model,
+and complete example.
 
 ### Hooks
 

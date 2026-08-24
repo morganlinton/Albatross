@@ -36,6 +36,7 @@ mod markdown;
 mod mcp;
 mod model_system;
 mod openai;
+mod packages;
 mod path_security;
 mod planner;
 mod playground;
@@ -101,6 +102,13 @@ struct CliEval {
     fixture_id: String,
     model: Option<String>,
     json_output: bool,
+}
+
+enum CliPackageCommand {
+    Install(String),
+    Remove(String),
+    List,
+    Update(Option<String>),
 }
 
 struct NonInteractiveApproval {
@@ -232,6 +240,10 @@ fn print_usage() {
     println!("  albatross --eval <fixture>       Run an agent eval fixture and exit");
     println!("  albatross --continue           Resume the most recent session here");
     println!("  albatross completions <shell>  Print a completion script (bash|zsh|fish)");
+    println!("  albatross install <source>     Install an npm: or git: resource package");
+    println!("  albatross remove <package>     Remove an installed package");
+    println!("  albatross list                 List installed packages and resources");
+    println!("  albatross update [package]     Update non-pinned packages");
     println!();
     println!("FLAGS:");
     println!("  --allow-tools, --yes   Auto-approve tool calls in one-shot mode");
@@ -261,7 +273,7 @@ _albatross() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [[ ${COMP_CWORD} -eq 1 ]]; then
-        COMPREPLY=( $(compgen -W "--print -p --continue -c --allow-tools --yes completions" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--print -p --continue -c --allow-tools --yes completions install remove list update" -- "$cur") )
         return 0
     fi
     if [[ "$prev" == "completions" ]]; then
@@ -285,6 +297,10 @@ _albatross() {
         '--allow-tools[Auto-approve tool calls in one-shot mode]'
         '--yes[Auto-approve tool calls in one-shot mode]'
         'completions[Emit a shell completion script]:shell:(bash zsh fish)'
+        'install[Install an npm or Git package]:source'
+        'remove[Remove an installed package]:package'
+        'list[List installed packages]'
+        'update[Update non-pinned packages]:package'
     )
     _arguments $opts
 }
@@ -298,6 +314,10 @@ complete -c albatross -l continue -s c -d 'Resume the latest session'
 complete -c albatross -l allow-tools -d 'Auto-approve tool calls in one-shot mode'
 complete -c albatross -l yes -d 'Auto-approve tool calls in one-shot mode'
 complete -c albatross -n '__fish_use_subcommand' -a completions -d 'Emit a shell completion script'
+complete -c albatross -n '__fish_use_subcommand' -a install -d 'Install an npm or Git package'
+complete -c albatross -n '__fish_use_subcommand' -a remove -d 'Remove an installed package'
+complete -c albatross -n '__fish_use_subcommand' -a list -d 'List installed packages'
+complete -c albatross -n '__fish_use_subcommand' -a update -d 'Update non-pinned packages'
 complete -c albatross -n '__fish_seen_subcommand_from completions' -a 'bash zsh fish' -d 'Shell flavor'
 "#;
 
@@ -341,6 +361,81 @@ fn parse_eval_args() -> Option<anyhow::Result<CliEval>> {
     })
 }
 
+fn parse_package_command() -> Option<anyhow::Result<CliPackageCommand>> {
+    let mut args = std::env::args().skip(1);
+    let command = args.next()?;
+    let parsed = match command.as_str() {
+        "install" => args
+            .next()
+            .map(CliPackageCommand::Install)
+            .ok_or_else(|| anyhow::anyhow!("usage: albatross install <npm:package|git:url>")),
+        "remove" => args
+            .next()
+            .map(CliPackageCommand::Remove)
+            .ok_or_else(|| anyhow::anyhow!("usage: albatross remove <package>")),
+        "list" => Ok(CliPackageCommand::List),
+        "update" => Ok(CliPackageCommand::Update(args.next())),
+        _ => return None,
+    };
+    Some(parsed)
+}
+
+fn run_package_command(command: CliPackageCommand) -> anyhow::Result<()> {
+    match command {
+        CliPackageCommand::Install(source) => {
+            eprintln!("Installing {source} with dependency lifecycle scripts disabled…");
+            let package = crate::packages::install(&source)?;
+            println!(
+                "installed {}{}",
+                package.id,
+                package
+                    .version
+                    .as_deref()
+                    .map(|v| format!(" v{v}"))
+                    .unwrap_or_default()
+            );
+            println!("Executable extensions are disabled until trusted with /extensions.");
+        }
+        CliPackageCommand::Remove(package) => {
+            let removed = crate::packages::remove(&package)?;
+            println!("removed {}", removed.id);
+        }
+        CliPackageCommand::List => {
+            let packages = crate::packages::list_installed()?;
+            if packages.is_empty() {
+                println!("No packages installed.");
+            } else {
+                for package in packages {
+                    let pin = if package.pinned { " [pinned]" } else { "" };
+                    println!("{}{}  {}", package.id, pin, package.source);
+                }
+                let resources = crate::packages::discover_installed();
+                println!(
+                    "{} extension(s), {} skill(s), {} prompt(s), {} theme(s)",
+                    resources.extensions.len(),
+                    resources.skills.len(),
+                    resources.prompts.len(),
+                    resources.themes.len()
+                );
+                for diagnostic in resources.diagnostics {
+                    eprintln!("warning: {diagnostic}");
+                }
+            }
+        }
+        CliPackageCommand::Update(package) => {
+            let updated = crate::packages::update(package.as_deref())?;
+            if updated.is_empty() {
+                println!("No non-pinned packages to update.");
+            } else {
+                for package in updated {
+                    println!("updated {}", package.id);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Companion to the config-directory migration, for the per-project scratch
 /// directory. Needs a loaded config because `workspace_root` is configurable.
 fn migrate_workspace_scratch(workspace_root: &str) {
@@ -354,7 +449,7 @@ async fn run_eval_cli(opts: CliEval) -> anyhow::Result<()> {
     crate::theme::init(
         config.display.color,
         config.display.ascii,
-        config.display.theme,
+        &config.display.theme,
     );
     let code = crate::agent_eval::run_eval_cli(
         &config,
@@ -413,7 +508,7 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
     crate::theme::init(
         config.display.color,
         config.display.ascii,
-        config.display.theme,
+        &config.display.theme,
     );
     migrate_workspace_scratch(&config.workspace_root);
     let http = crate::openai::build_http_client();
@@ -444,10 +539,17 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
             "{pending_extensions} extension(s) need review and were skipped; trust them interactively with /extensions"
         );
     }
-    let reserved_commands = crate::commands::command_list()
+    let mut reserved_commands = crate::commands::command_list()
         .into_iter()
         .map(|(name, _)| name)
-        .collect();
+        .collect::<std::collections::BTreeSet<_>>();
+    reserved_commands.extend(
+        config
+            .package_resources
+            .skills
+            .keys()
+            .map(|name| format!("/skill:{name}")),
+    );
     let (extensions, extension_errors) = crate::extensions::spawn_configured(
         &trusted_extensions,
         &config.workspace_root,
@@ -775,6 +877,9 @@ async fn main() -> anyhow::Result<()> {
     if let Some(shell) = parse_completions_arg() {
         return run_completions(&shell);
     }
+    if let Some(command) = parse_package_command() {
+        return run_package_command(command?);
+    }
     if let Some(opts) = parse_eval_args() {
         return run_eval_cli(opts?).await;
     }
@@ -791,14 +896,14 @@ async fn main() -> anyhow::Result<()> {
     crate::theme::init(
         setup_base.display.color,
         setup_base.display.ascii,
-        setup_base.display.theme,
+        &setup_base.display.theme,
     );
     let _ = setup::maybe_run_first_run_setup(&setup_base).await?;
     let config = load_config();
     crate::theme::init(
         config.display.color,
         config.display.ascii,
-        config.display.theme,
+        &config.display.theme,
     );
     migrate_workspace_scratch(&config.workspace_root);
     let http = crate::openai::build_http_client();
@@ -975,10 +1080,18 @@ async fn main() -> anyhow::Result<()> {
                 "  {YELLOW}!{RESET} {DIM}{pending} extension(s) need review and were skipped; run /extensions{RESET}"
             );
         }
-        let reserved = crate::commands::command_list()
+        let mut reserved = crate::commands::command_list()
             .into_iter()
             .map(|(name, _)| name)
-            .collect();
+            .collect::<std::collections::BTreeSet<_>>();
+        reserved.extend(
+            state
+                .config
+                .package_resources
+                .skills
+                .keys()
+                .map(|name| format!("/skill:{name}")),
+        );
         let (registry, errors) =
             crate::extensions::spawn_configured(&trusted, &state.config.workspace_root, &reserved)
                 .await;
@@ -1100,6 +1213,7 @@ async fn main() -> anyhow::Result<()> {
         // started via `/extensions` becomes discoverable immediately.
         let mut command_names = crate::commands::command_list();
         command_names.extend(state.extensions.command_list());
+        command_names.extend(crate::commands::package_command_list(&state));
         command_names.sort_by(|a, b| a.0.cmp(&b.0));
         let input = match plain_read_line_with_history_outcome(
             format!(

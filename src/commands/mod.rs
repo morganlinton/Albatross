@@ -97,6 +97,7 @@ mod fable;
 mod hooks_cmds;
 mod mcp_cmds;
 mod memory;
+mod packages_cmds;
 mod route;
 mod scorecard;
 mod session;
@@ -202,6 +203,8 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "/extensions",
         "List, trust, and start configured out-of-process extensions",
     ),
+    ("/packages", "List installed npm/Git resource packages"),
+    ("/skills", "List and activate skills from installed packages"),
     (
         "/provider",
         "Switch model provider (ollama, lm-studio, mlx, llamacpp, openrouter, openai, anthropic, openai-codex, grok); /backend remains an alias",
@@ -313,6 +316,8 @@ pub async fn dispatch(input: &str, state: &mut AppState) -> Result<()> {
         "/hooks" => hooks_cmds::cmd_hooks(&args, state)?,
         "/mcp" => mcp_cmds::cmd_mcp(&args, state).await?,
         "/extensions" => extensions_cmds::cmd_extensions(&args, state).await?,
+        "/packages" => packages_cmds::cmd_packages(&args, state)?,
+        "/skills" => packages_cmds::cmd_skills(state),
         "/provider" | "/backend" => config_cmds::cmd_backend(&args, state).await?,
         "/theme" => config_cmds::cmd_theme(&args, state),
         "/model" => config_cmds::cmd_model(&args, state).await?,
@@ -344,7 +349,9 @@ pub async fn dispatch(input: &str, state: &mut AppState) -> Result<()> {
         "/autotune" => redirect_to_doctor("/autotune", "autotune"),
         "/recommend" => redirect_to_doctor("/recommend", "recommend"),
         other => {
-            if state.extensions.has_command(other) {
+            if packages_cmds::execute_skill(other, &args, state).await? {
+                // Skill command handled a normal agent turn.
+            } else if state.extensions.has_command(other) {
                 let result = state.extensions.execute_command(other, &args).await?;
                 if let Some(message) = result.message.filter(|value| !value.trim().is_empty()) {
                     println!("{message}");
@@ -392,6 +399,10 @@ pub fn command_list() -> Vec<(String, String)> {
     cmds
 }
 
+pub fn package_command_list(state: &AppState) -> Vec<(String, String)> {
+    packages_cmds::skill_command_list(state)
+}
+
 fn help(state: &AppState) {
     for (n, d) in COMMANDS {
         println!("  {CYAN}{:<12}{RESET} {DIM}{}{RESET}", n, d);
@@ -399,6 +410,12 @@ fn help(state: &AppState) {
     for (name, description) in state.extensions.command_list() {
         println!(
             "  {CYAN}{:<12}{RESET} {DIM}{} (extension){RESET}",
+            name, description
+        );
+    }
+    for (name, description) in packages_cmds::skill_command_list(state) {
+        println!(
+            "  {CYAN}{:<12}{RESET} {DIM}{} (skill){RESET}",
             name, description
         );
     }

@@ -184,15 +184,6 @@ pub enum ThemePreset {
 }
 
 impl ThemePreset {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Cyan => "cyan",
-            Self::Mono => "mono",
-            Self::Green => "green",
-            Self::Amber => "amber",
-        }
-    }
-
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "cyan" | "turquoise" | "default" => Some(Self::Cyan),
@@ -248,8 +239,8 @@ pub struct DisplayConfig {
     pub event_log: crate::turn_trace::EventLogConfig,
     #[serde(default = "default_color_mode")]
     pub color: ColorMode,
-    #[serde(default = "default_theme_preset")]
-    pub theme: ThemePreset,
+    #[serde(default = "default_theme_name")]
+    pub theme: String,
     #[serde(default)]
     pub ascii: bool,
 }
@@ -272,8 +263,8 @@ fn default_loader_style() -> LoaderStyle {
 fn default_color_mode() -> ColorMode {
     ColorMode::Auto
 }
-fn default_theme_preset() -> ThemePreset {
-    ThemePreset::Cyan
+fn default_theme_name() -> String {
+    "cyan".into()
 }
 
 impl Default for DisplayConfig {
@@ -287,7 +278,7 @@ impl Default for DisplayConfig {
             show_banner: true,
             event_log: crate::turn_trace::EventLogConfig::default(),
             color: default_color_mode(),
-            theme: default_theme_preset(),
+            theme: default_theme_name(),
             ascii: false,
         }
     }
@@ -723,6 +714,9 @@ pub struct AgentConfig {
     pub model_system: ModelSystemConfig,
     pub mcp_servers: BTreeMap<String, crate::mcp::McpServerConfig>,
     pub extensions: BTreeMap<String, crate::extensions::ExtensionConfig>,
+    /// Resources discovered from globally installed npm/Git packages. This is
+    /// resolved state, not a project-config field.
+    pub package_resources: crate::packages::PackageResources,
     pub hooks: crate::hooks::HookConfig,
 }
 
@@ -806,6 +800,7 @@ impl Default for AgentConfig {
             model_system: ModelSystemConfig::default(),
             mcp_servers: BTreeMap::new(),
             extensions: BTreeMap::new(),
+            package_resources: crate::packages::PackageResources::default(),
             hooks: crate::hooks::HookConfig::default(),
         }
     }
@@ -1257,7 +1252,7 @@ pub fn persist_backend_model_defaults(
 
 /// Surgically persist the display theme while preserving every other project
 /// setting. `/theme` uses this so a live palette choice survives restart.
-pub fn persist_display_theme(path: &Path, theme: ThemePreset) -> Result<()> {
+pub fn persist_display_theme(path: &Path, theme: &str) -> Result<()> {
     let mut root = if path.exists() {
         let text = std::fs::read_to_string(path)
             .map_err(|e| anyhow!("could not read {}: {e}", path.display()))?;
@@ -1289,7 +1284,7 @@ pub fn persist_display_theme(path: &Path, theme: ThemePreset) -> Result<()> {
             path.display()
         );
     };
-    display.insert("theme".into(), json!(theme.as_str()));
+    display.insert("theme".into(), json!(theme));
 
     let body = serde_json::to_string_pretty(&root)?;
     std::fs::write(path, format!("{body}\n"))
@@ -1501,6 +1496,25 @@ pub fn load_config() -> AgentConfig {
             config.history.max_entries = n.max(1);
         }
     }
+
+    let package_resources = crate::packages::discover_installed();
+    for (name, extension) in &package_resources.extensions {
+        // Explicit project configuration wins over a packaged default.
+        config
+            .extensions
+            .entry(name.clone())
+            .or_insert_with(|| extension.clone());
+    }
+    if ThemePreset::parse(&config.display.theme).is_none()
+        && !package_resources.themes.contains_key(&config.display.theme)
+    {
+        eprintln!(
+            "unknown configured theme `{}`; falling back to cyan",
+            config.display.theme
+        );
+        config.display.theme = "cyan".into();
+    }
+    config.package_resources = package_resources;
 
     config
 }
@@ -1729,7 +1743,7 @@ mod tests {
         )
         .unwrap();
 
-        persist_display_theme(&path, ThemePreset::Amber).unwrap();
+        persist_display_theme(&path, "amber").unwrap();
         let merged: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(merged["backend"], "ollama");
         assert_eq!(merged["display"]["showBanner"], false);

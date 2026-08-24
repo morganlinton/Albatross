@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Add a trusted, language-neutral extension API over JSON-RPC stdio. Extension
   processes can register namespaced model tools, interactive slash commands,
   and subscriptions to Albatross lifecycle events.
+- Add installable npm and Git resource packages with lifecycle scripts
+  disabled, atomic replacement, package-scoped extensions and skills,
+  namespaced prompts, selectable 256-color themes, and update/remove commands.
 
 ## [2.3.0] - 2026-08-03
 

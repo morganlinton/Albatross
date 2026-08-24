@@ -36,6 +36,10 @@ pub struct ExtensionConfig {
     pub env: BTreeMap<String, String>,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Optional package-local process directory. Hand-written project config
+    /// defaults to the workspace root for backward compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<String>,
 }
 
 fn default_enabled() -> bool {
@@ -49,6 +53,7 @@ impl Default for ExtensionConfig {
             args: Vec::new(),
             env: BTreeMap::new(),
             enabled: true,
+            working_directory: None,
         }
     }
 }
@@ -249,7 +254,12 @@ impl ExtensionClient {
         apply_extension_env(&mut command, config);
         command.args(&config.args);
         command
-            .current_dir(workspace_root)
+            .current_dir(
+                config
+                    .working_directory
+                    .as_deref()
+                    .unwrap_or(workspace_root),
+            )
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())

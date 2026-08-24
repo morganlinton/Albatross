@@ -16,12 +16,18 @@
 
 use std::io::IsTerminal;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::{OnceLock, RwLock};
 
 use crate::config::{ColorMode, ThemePreset};
 
 static COLORS_ENABLED: AtomicBool = AtomicBool::new(true);
 static ASCII_SYMBOLS: AtomicBool = AtomicBool::new(false);
 static THEME_PRESET: AtomicU8 = AtomicU8::new(0);
+static CUSTOM_THEME: OnceLock<RwLock<Option<crate::packages::ThemePalette>>> = OnceLock::new();
+
+fn custom_theme() -> &'static RwLock<Option<crate::packages::ThemePalette>> {
+    CUSTOM_THEME.get_or_init(|| RwLock::new(None))
+}
 
 pub fn colors_enabled() -> bool {
     COLORS_ENABLED.load(Ordering::Relaxed)
@@ -34,7 +40,7 @@ pub fn ascii_enabled() -> bool {
 /// Resolve and apply the color/glyph switches. Call once per process entry
 /// point (interactive, one-shot, eval) right after config load, before any UI
 /// output.
-pub fn init(color: ColorMode, ascii: bool, theme: ThemePreset) {
+pub fn init(color: ColorMode, ascii: bool, theme: &str) {
     let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
     let term_dumb = std::env::var("TERM").map(|t| t == "dumb").unwrap_or(false);
     let is_tty = std::io::stdout().is_terminal();
@@ -43,7 +49,22 @@ pub fn init(color: ColorMode, ascii: bool, theme: ThemePreset) {
         Ordering::Relaxed,
     );
     ASCII_SYMBOLS.store(ascii, Ordering::Relaxed);
-    THEME_PRESET.store(theme_index(theme), Ordering::Relaxed);
+    if let Some(preset) = ThemePreset::parse(theme) {
+        THEME_PRESET.store(theme_index(preset), Ordering::Relaxed);
+        *custom_theme().write().expect("custom theme lock") = None;
+    } else {
+        let palette = crate::packages::discover_installed()
+            .themes
+            .get(theme)
+            .map(|resource| resource.palette.clone());
+        if let Some(palette) = palette {
+            THEME_PRESET.store(4, Ordering::Relaxed);
+            *custom_theme().write().expect("custom theme lock") = Some(palette);
+        } else {
+            THEME_PRESET.store(0, Ordering::Relaxed);
+            *custom_theme().write().expect("custom theme lock") = None;
+        }
+    }
 }
 
 fn theme_index(theme: ThemePreset) -> u8 {
@@ -128,7 +149,25 @@ impl std::fmt::Display for Style {
         if colors_enabled() {
             match self.0 {
                 StyleValue::Fixed(code) => f.write_str(code),
-                StyleValue::Role(role) => f.write_str(role_code(current_preset(), role)),
+                StyleValue::Role(role) => {
+                    if THEME_PRESET.load(Ordering::Relaxed) == 4 {
+                        if let Some(theme) =
+                            custom_theme().read().expect("custom theme lock").as_ref()
+                        {
+                            let color = match role {
+                                StyleRole::Accent => theme.accent,
+                                StyleRole::AccentDeep => theme.accent_deep,
+                                StyleRole::Muted => theme.muted,
+                                StyleRole::Success => theme.success,
+                                StyleRole::Warn => theme.warn,
+                                StyleRole::Error => theme.error,
+                                StyleRole::Magenta => theme.magenta,
+                            };
+                            return write!(f, "\x1b[38;5;{color}m");
+                        }
+                    }
+                    f.write_str(role_code(current_preset(), role))
+                }
             }
         } else {
             Ok(())
@@ -255,12 +294,17 @@ const MONO_FADE_RAMP: [u8; 12] = [255, 252, 249, 246, 243, 240, 238, 237, 236, 2
 const GREEN_FADE_RAMP: [u8; 12] = [120, 84, 48, 42, 36, 35, 34, 28, 22, 237, 235, 234];
 const AMBER_FADE_RAMP: [u8; 12] = [229, 220, 214, 208, 202, 166, 130, 94, 58, 237, 235, 234];
 
-pub(crate) fn fade_ramp() -> &'static [u8; 12] {
+pub(crate) fn fade_ramp() -> [u8; 12] {
+    if THEME_PRESET.load(Ordering::Relaxed) == 4 {
+        if let Some(theme) = custom_theme().read().expect("custom theme lock").as_ref() {
+            return theme.fade;
+        }
+    }
     match current_preset() {
-        ThemePreset::Cyan => &CYAN_FADE_RAMP,
-        ThemePreset::Mono => &MONO_FADE_RAMP,
-        ThemePreset::Green => &GREEN_FADE_RAMP,
-        ThemePreset::Amber => &AMBER_FADE_RAMP,
+        ThemePreset::Cyan => CYAN_FADE_RAMP,
+        ThemePreset::Mono => MONO_FADE_RAMP,
+        ThemePreset::Green => GREEN_FADE_RAMP,
+        ThemePreset::Amber => AMBER_FADE_RAMP,
     }
 }
 
@@ -306,15 +350,15 @@ mod tests {
     fn style_and_sym_render_by_switch() {
         // Tests share one process; exercise both switch states in a single
         // serialized test and restore the defaults afterwards.
-        init(ColorMode::Always, false, ThemePreset::Cyan);
+        init(ColorMode::Always, false, "cyan");
         assert_eq!(format!("{ACCENT}"), "\x1b[96m");
         assert_eq!(format!("{OK}"), "✓");
 
-        init(ColorMode::Always, false, ThemePreset::Green);
+        init(ColorMode::Always, false, "green");
         assert_eq!(format!("{ACCENT}"), "\x1b[92m");
-        init(ColorMode::Always, false, ThemePreset::Amber);
+        init(ColorMode::Always, false, "amber");
         assert_eq!(format!("{ACCENT_DEEP}"), "\x1b[33m");
-        init(ColorMode::Always, false, ThemePreset::Mono);
+        init(ColorMode::Always, false, "mono");
         assert_eq!(format!("{ERROR}"), "\x1b[39m");
 
         COLORS_ENABLED.store(false, Ordering::Relaxed);
@@ -323,7 +367,7 @@ mod tests {
         assert_eq!(format!("{OK}"), "+");
         assert!(fade_header("you").contains("you"));
         assert!(!fade_header("you").contains('\x1b'));
-        init(ColorMode::Always, false, ThemePreset::Cyan);
+        init(ColorMode::Always, false, "cyan");
 
         COLORS_ENABLED.store(true, Ordering::Relaxed);
         ASCII_SYMBOLS.store(false, Ordering::Relaxed);

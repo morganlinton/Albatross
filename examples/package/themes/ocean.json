@@ -1,0 +1,11 @@
+{
+  "name": "ocean",
+  "accent": 45,
+  "accentDeep": 31,
+  "muted": 244,
+  "success": 84,
+  "warn": 221,
+  "error": 203,
+  "magenta": 177,
+  "fade": [45, 39, 38, 37, 31, 30, 24, 23, 24, 237, 235, 234]
+}

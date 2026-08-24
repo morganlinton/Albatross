@@ -220,6 +220,6 @@ extension performs its own redaction.
 ## Version 1 boundaries
 
 Protocol v1 intentionally does not support custom model providers, custom TUI
-components, prompts/skills/themes packaging, or extension-to-host requests.
-Those capabilities can be added without changing the tool, command, and event
-contracts above.
+components, or extension-to-host requests. Extensions can be distributed with
+skills, prompts, and themes through [Albatross packages](PACKAGES.md) without
+changing the tool, command, and event contracts above.

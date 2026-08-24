@@ -655,6 +655,13 @@ pub(super) async fn cmd_prompt(args: &str, state: &mut AppState) -> Result<()> {
                     template.name, template.description
                 );
             }
+            if !state.config.package_resources.prompts.is_empty() {
+                println!();
+                println!("  {DIM}Packaged prompts:{RESET}");
+                for prompt in state.config.package_resources.prompts.values() {
+                    println!("    {CYAN}{}{RESET} - {}", prompt.name, prompt.description);
+                }
+            }
         }
         "run" => {
             if parts.len() < 2 {
@@ -691,6 +698,10 @@ pub(super) async fn cmd_prompt(args: &str, state: &mut AppState) -> Result<()> {
                         builtin_name
                     );
                 }
+            } else if let Some(template) = state.config.package_resources.prompts.get(name).cloned()
+            {
+                let content = crate::packages::read_text_resource(&template)?;
+                run_prompt_content(&content, state).await?;
             } else {
                 match load_prompt(&state.config.session_dir, name) {
                     Ok(content) => {

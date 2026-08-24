@@ -80,14 +80,10 @@ mod tests {
                 crate::config::ColorMode::Never
             },
             false,
-            crate::config::ThemePreset::Cyan,
+            "cyan",
         );
         f();
-        crate::theme::init(
-            crate::config::ColorMode::Always,
-            false,
-            crate::config::ThemePreset::Cyan,
-        );
+        crate::theme::init(crate::config::ColorMode::Always, false, "cyan");
     }
 
     #[test]
