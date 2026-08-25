@@ -717,6 +717,7 @@ pub struct AgentConfig {
     /// Resources discovered from globally installed npm/Git packages. This is
     /// resolved state, not a project-config field.
     pub package_resources: crate::packages::PackageResources,
+    pub skills: crate::skills::SkillRegistry,
     pub hooks: crate::hooks::HookConfig,
 }
 
@@ -801,6 +802,7 @@ impl Default for AgentConfig {
             mcp_servers: BTreeMap::new(),
             extensions: BTreeMap::new(),
             package_resources: crate::packages::PackageResources::default(),
+            skills: crate::skills::SkillRegistry::default(),
             hooks: crate::hooks::HookConfig::default(),
         }
     }
@@ -946,6 +948,7 @@ impl AgentConfig {
                  - Call ship_status before declaring the work done.\n",
             );
         }
+        crate::skills::append_catalog(&mut prompt, &self.skills);
         prompt
     }
 
@@ -1514,6 +1517,8 @@ pub fn load_config() -> AgentConfig {
         );
         config.display.theme = "cyan".into();
     }
+    config.skills =
+        crate::skills::SkillRegistry::discover(&config.workspace_root, &package_resources.skills);
     config.package_resources = package_resources;
 
     config

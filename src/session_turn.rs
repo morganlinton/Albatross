@@ -505,6 +505,9 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
 
     let mut active_tool_names = select_tool_names(&state.config, trimmed);
     active_tool_names.extend(state.extensions.tool_names());
+    if !state.config.skills.is_empty() {
+        active_tool_names.push("activate_skill".into());
+    }
     // The system message is the cache prefix; keep it prompt-independent. The
     // prompt-focused repo map is computed here but folded into the current user
     // turn below the cache boundary (see `initial` assembly), not the system
@@ -568,6 +571,9 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
     let mut tools = build_tools_for_names(&state.config, &active_tool_names, Some(&tool_runtime));
     tools.extend(state.mcp_tools.iter().cloned());
     tools.extend(state.extensions.tools());
+    if let Some(tool) = crate::skills::activation_tool(&state.config.skills) {
+        tools.push(tool);
+    }
     // The runtime context owns an event-sender clone for nested tools. Keeping
     // this outer clone alive across the drain join prevents the channel from
     // closing after the agent future returns.

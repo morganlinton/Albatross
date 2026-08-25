@@ -20,6 +20,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 async-trait = "0.1"
 futures-util = "0.3"
 crossterm = "0.28"

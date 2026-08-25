@@ -1,7 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 use crate::app_state::AppState;
-use crate::packages::{list_installed, read_text_resource};
+use crate::packages::list_installed;
 use crate::session_turn::{run_user_turn, TurnOptions};
 
 use super::{CYAN, DIM, GREEN, RESET, YELLOW};
@@ -50,58 +50,43 @@ pub(super) fn cmd_packages(args: &str, state: &AppState) -> Result<()> {
 }
 
 pub(super) fn cmd_skills(state: &AppState) {
-    let skills = &state.config.package_resources.skills;
+    let skills = &state.config.skills;
     if skills.is_empty() {
-        println!("  {DIM}No packaged skills installed.{RESET}");
+        println!("  {DIM}No valid Agent Skills discovered.{RESET}");
+        for diagnostic in &skills.diagnostics {
+            println!("  {YELLOW}!{RESET} {DIM}{diagnostic}{RESET}");
+        }
         return;
     }
-    println!("  {GREEN}Packaged skills{RESET}");
-    for skill in skills.values() {
-        let detail = if skill.description.is_empty() {
-            String::new()
-        } else {
-            format!(" — {}", skill.description)
-        };
-        println!("  {CYAN}/skill:{}{RESET}{DIM}{detail}{RESET}", skill.name);
+    println!("  {GREEN}Agent Skills{RESET}");
+    for skill in skills.skills() {
+        println!(
+            "  {CYAN}/skill:{}{RESET} {DIM}{} · {} · {}{RESET}",
+            skill.name,
+            skill.scope.as_str(),
+            skill.description,
+            skill.path.display()
+        );
+    }
+    for diagnostic in &skills.diagnostics {
+        println!("  {YELLOW}!{RESET} {DIM}{diagnostic}{RESET}");
     }
 }
 
 pub(super) fn skill_command_list(state: &AppState) -> Vec<(String, String)> {
-    state
-        .config
-        .package_resources
-        .skills
-        .values()
-        .map(|skill| {
-            (
-                format!("/skill:{}", skill.name),
-                if skill.description.is_empty() {
-                    format!("Activate skill from {}", skill.package)
-                } else {
-                    skill.description.clone()
-                },
-            )
-        })
-        .collect()
+    state.config.skills.command_entries()
 }
 
 pub(super) async fn execute_skill(command: &str, args: &str, state: &mut AppState) -> Result<bool> {
     let Some(name) = command.strip_prefix("/skill:") else {
         return Ok(false);
     };
-    let skill = state
-        .config
-        .package_resources
-        .skills
-        .get(name)
-        .cloned()
-        .ok_or_else(|| anyhow!("unknown packaged skill: {name}"))?;
-    let instructions = read_text_resource(&skill)?;
+    let instructions = state.config.skills.activate(name)?;
     let task = args.trim();
     let prompt = if task.is_empty() {
-        format!("Apply the following skill instructions to the current task and conversation.\n\n<skill name=\"{}\">\n{}\n</skill>", skill.name, instructions)
+        format!("The user explicitly activated Agent Skill `{name}`. Apply it to the current task and conversation.\n\n{instructions}")
     } else {
-        format!("Apply the following skill instructions to this request:\n{task}\n\n<skill name=\"{}\">\n{}\n</skill>", skill.name, instructions)
+        format!("The user explicitly activated Agent Skill `{name}` for this request:\n{task}\n\n{instructions}")
     };
     run_user_turn(
         state,
@@ -109,7 +94,7 @@ pub(super) async fn execute_skill(command: &str, args: &str, state: &mut AppStat
             user_prompt: prompt,
             auto_verify_tests: state.config.mode == crate::config::OperatorMode::Ship,
             yolo_approve: false,
-            source: "package-skill",
+            source: "agent-skill",
         },
     )
     .await?;

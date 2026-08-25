@@ -530,10 +530,7 @@ fn resource_files(
 
 fn resource_matches(path: &Path, kind: ResourceKind) -> bool {
     match kind {
-        ResourceKind::Skill => {
-            path.file_name().and_then(|s| s.to_str()) == Some("SKILL.md")
-                || path.extension().and_then(|s| s.to_str()) == Some("md")
-        }
+        ResourceKind::Skill => path.file_name().and_then(|s| s.to_str()) == Some("SKILL.md"),
         ResourceKind::Prompt => path.extension().and_then(|s| s.to_str()) == Some("md"),
         ResourceKind::Theme => path.extension().and_then(|s| s.to_str()) == Some("json"),
     }
@@ -914,7 +911,7 @@ mod tests {
         fs::create_dir(temp.path().join("themes")).unwrap();
         fs::write(
             temp.path().join("skills/review/SKILL.md"),
-            "# Review carefully",
+            "---\nname: review\ndescription: Review carefully.\n---\n\n# Review carefully",
         )
         .unwrap();
         fs::write(temp.path().join("prompts/fix.md"), "Fix this").unwrap();
@@ -945,7 +942,11 @@ mod tests {
         .unwrap();
         fs::create_dir_all(temp.path().join("shared/skills/check")).unwrap();
         fs::create_dir_all(temp.path().join("shared/prompts")).unwrap();
-        fs::write(temp.path().join("shared/skills/check/SKILL.md"), "# Check").unwrap();
+        fs::write(
+            temp.path().join("shared/skills/check/SKILL.md"),
+            "---\nname: check\ndescription: Check the work.\n---\n\n# Check",
+        )
+        .unwrap();
         fs::write(temp.path().join("shared/prompts/ask.md"), "Ask").unwrap();
         let package = InstalledPackage {
             id: "portable".into(),

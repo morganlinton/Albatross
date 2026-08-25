@@ -204,7 +204,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "List, trust, and start configured out-of-process extensions",
     ),
     ("/packages", "List installed npm/Git resource packages"),
-    ("/skills", "List and activate skills from installed packages"),
+    ("/skills", "List discovered Agent Skills and diagnostics"),
     (
         "/provider",
         "Switch model provider (ollama, lm-studio, mlx, llamacpp, openrouter, openai, anthropic, openai-codex, grok); /backend remains an alias",

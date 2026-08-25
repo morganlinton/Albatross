@@ -81,6 +81,9 @@ few that aren't usual:
 - **Installable packages.** Install npm or Git packages containing extensions,
   skills, prompt templates, and terminal themes. npm lifecycle scripts stay
   disabled, and packaged executables still require workspace trust.
+- **Portable Agent Skills.** Discover standard `SKILL.md` bundles from project,
+  user, npm, and Git locations; invoke them with `/skill:name`, or let the model
+  load matching instructions progressively through an approval-aware tool.
 - **`/auth` instead of `.env`.** Paste API keys once into a `0600` file
   under `~/.config/albatross/`. Env vars still win when set.
 - **Approval gates you can live with.** Every mutating call shows you the
@@ -432,7 +435,7 @@ this exact call`. The session cache resets on `/new`.
 /mcp                   list or trust project MCP servers
 /extensions            list or trust configured extension processes
 /packages              list installed npm/Git resource packages
-/skills                list namespaced skills from installed packages
+/skills                list discovered Agent Skills and validation diagnostics
 /compare [model]       re-send the last prompt against OpenRouter for A/B
 /fusion on|tool|off    use OpenRouter Fusion alias or attach Fusion to a model
 /route                 open the guided routing menu
@@ -820,6 +823,15 @@ the existing `/extensions` trust flow. npm lifecycle scripts are disabled for
 both npm packages and Git package dependencies. See
 [docs/PACKAGES.md](docs/PACKAGES.md) for the manifest, commands, security model,
 and complete example.
+
+### Agent Skills
+
+Albatross supports the open Agent Skills directory and frontmatter standard.
+Skills are discovered from project and user roots plus installed packages,
+listed with `/skills`, and activated with `/skill:name [optional task]`.
+Only names and descriptions enter the initial prompt; full instructions and
+resource indexes load on demand. See [docs/SKILLS.md](docs/SKILLS.md) for the
+format, precedence rules, progressive disclosure, and trust behavior.
 
 ### Hooks
 

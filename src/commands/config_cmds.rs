@@ -59,6 +59,11 @@ pub(super) fn cmd_config(state: &AppState) {
         package_resources.themes.len()
     );
     println!(
+        "  {DIM}agentSkills{RESET}      discovered={} diagnostics={}",
+        state.config.skills.len(),
+        state.config.skills.diagnostics.len()
+    );
+    println!(
         "  {DIM}showBanner{RESET}       {}",
         state.config.display.show_banner
     );

@@ -52,6 +52,7 @@ mod session_paths;
 mod session_turn;
 mod setup;
 mod shipcheck;
+mod skills;
 mod test_integration;
 mod theme;
 mod tools;
@@ -545,10 +546,10 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
         .collect::<std::collections::BTreeSet<_>>();
     reserved_commands.extend(
         config
-            .package_resources
             .skills
-            .keys()
-            .map(|name| format!("/skill:{name}")),
+            .command_entries()
+            .into_iter()
+            .map(|(name, _)| name),
     );
     let (extensions, extension_errors) = crate::extensions::spawn_configured(
         &trusted_extensions,
@@ -638,6 +639,9 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
     }
     let mut active_tool_names = select_tool_names(&config, &prompt);
     active_tool_names.extend(extensions.tool_names());
+    if !config.skills.is_empty() {
+        active_tool_names.push("activate_skill".into());
+    }
     let mut hook_contexts = hook_context_messages(HookEventName::SessionStart, &start_outcome);
     hook_contexts.extend(hook_context_messages(
         HookEventName::UserPromptSubmit,
@@ -672,6 +676,9 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
     };
     let mut tools = build_tools_for_names(&config, &active_tool_names, Some(&tool_runtime));
     tools.extend(extensions.tools());
+    if let Some(tool) = crate::skills::activation_tool(&config.skills) {
+        tools.push(tool);
+    }
     let result = run_agent(
         &http,
         &backend_desc,
@@ -969,8 +976,14 @@ async fn main() -> anyhow::Result<()> {
         println!("  {YELLOW}!{RESET} {DIM}Provider not reachable: {hint}{RESET}");
         println!("  {DIM}You can still type /provider to switch, or fix and retry.{RESET}");
     } else if std::env::var("WARMUP").as_deref() != Ok("false") {
-        let warmup_tool_names = select_tool_names(&config, "");
-        let warmup_tools_vec = build_tools_for_names(&config, &warmup_tool_names, None);
+        let mut warmup_tool_names = select_tool_names(&config, "");
+        if !config.skills.is_empty() {
+            warmup_tool_names.push("activate_skill".into());
+        }
+        let mut warmup_tools_vec = build_tools_for_names(&config, &warmup_tool_names, None);
+        if let Some(tool) = crate::skills::activation_tool(&config.skills) {
+            warmup_tools_vec.push(tool);
+        }
         let warmup_tool_defs = crate::agent::to_openai_tools(&warmup_tools_vec);
         let warmup_prompt = config.render_system_prompt_for_tools(&warmup_tool_names);
         let loader = crate::loader::Loader::start("Warming up".into(), config.display.loader_style);
@@ -1087,10 +1100,10 @@ async fn main() -> anyhow::Result<()> {
         reserved.extend(
             state
                 .config
-                .package_resources
                 .skills
-                .keys()
-                .map(|name| format!("/skill:{name}")),
+                .command_entries()
+                .into_iter()
+                .map(|(name, _)| name),
         );
         let (registry, errors) =
             crate::extensions::spawn_configured(&trusted, &state.config.workspace_root, &reserved)

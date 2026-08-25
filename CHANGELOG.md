@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Add installable npm and Git resource packages with lifecycle scripts
   disabled, atomic replacement, package-scoped extensions and skills,
   namespaced prompts, selectable 256-color themes, and update/remove commands.
+- Add Agent Skills standard discovery across project, user, npm, and Git
+  sources, `/skill:name` completion and activation, validation diagnostics,
+  precedence rules, and progressive model activation with project approval.
 
 ## [2.3.0] - 2026-08-03
 

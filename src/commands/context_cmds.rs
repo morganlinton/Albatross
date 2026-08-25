@@ -191,6 +191,9 @@ pub(super) fn cmd_context(args: &str, state: &mut AppState) {
     let last_prompt = last_user_prompt(state).unwrap_or_default();
     let mut active_tool_names = select_tool_names(&state.config, &last_prompt);
     active_tool_names.extend(state.extensions.tool_names());
+    if !state.config.skills.is_empty() {
+        active_tool_names.push("activate_skill".into());
+    }
     let base_system_prompt = render_system_prompt_with_memory(
         &state.config,
         &state.backend,
@@ -202,6 +205,9 @@ pub(super) fn cmd_context(args: &str, state: &mut AppState) {
     let mut tools = build_tools_for_names(&state.config, &active_tool_names, None);
     tools.extend(state.mcp_tools.iter().cloned());
     tools.extend(state.extensions.tools());
+    if let Some(tool) = crate::skills::activation_tool(&state.config.skills) {
+        tools.push(tool);
+    }
     let tool_defs = to_openai_tools(&tools);
     let budget = measure_prompt_budget(&system_prompt, &state.messages, &tool_defs);
     println!("  {DIM}messages{RESET}  {}", state.messages.len());
@@ -259,6 +265,9 @@ pub(super) async fn cmd_compact(args: &str, state: &mut AppState) -> Result<()> 
     let last_prompt = last_user_prompt(state).unwrap_or_default();
     let mut active_tool_names = select_tool_names(&state.config, &last_prompt);
     active_tool_names.extend(state.extensions.tool_names());
+    if !state.config.skills.is_empty() {
+        active_tool_names.push("activate_skill".into());
+    }
     let base_system_prompt = render_system_prompt_with_memory(
         &state.config,
         &state.backend,
@@ -268,6 +277,9 @@ pub(super) async fn cmd_compact(args: &str, state: &mut AppState) -> Result<()> 
     let mut tools = build_tools_for_names(&state.config, &active_tool_names, None);
     tools.extend(state.mcp_tools.iter().cloned());
     tools.extend(state.extensions.tools());
+    if let Some(tool) = crate::skills::activation_tool(&state.config.skills) {
+        tools.push(tool);
+    }
     let tool_defs = to_openai_tools(&tools);
 
     println!("  {DIM}Compacting older messages…{RESET}");

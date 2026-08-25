@@ -77,7 +77,7 @@ If the arrays are omitted, Albatross discovers conventional directories:
 
 - `extensions/` — each `.json` file is an extension descriptor using the same
   fields as an entry in `albatross.extensions`
-- `skills/` — recursively discovers `SKILL.md` and other Markdown files
+- `skills/` — recursively discovers standards-compliant `SKILL.md` files
 - `prompts/` — recursively discovers Markdown files
 - `themes/` — recursively discovers JSON theme files
 
@@ -93,15 +93,21 @@ arguments run with the package root as their working directory.
 
 ## Skills
 
-A skill is Markdown. `skills/review/SKILL.md` in package `acme-tools` becomes:
+A skill follows the Agent Skills standard: a directory containing an exact
+`SKILL.md` filename with required `name` and `description` YAML frontmatter.
+`skills/review/SKILL.md` in package `acme-tools` is available by its canonical
+name and its package-qualified alias:
 
 ```text
+/skill:review <optional task>
 /skill:acme-tools:review <optional task>
 ```
 
 The command starts a normal agent turn with the skill instructions and the
-optional task. `/skills` lists installed skills. Package names and resource
-names are normalized for command safety.
+optional task. `/skills` lists discovered skills and validation diagnostics.
+Package names and resource names are normalized for command safety. See
+[`SKILLS.md`](SKILLS.md) for validation, discovery precedence, progressive
+activation, and the security model.
 
 ## Prompt templates
 
