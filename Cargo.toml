@@ -14,6 +14,7 @@ categories = ["command-line-utilities", "development-tools"]
 [[bin]]
 name = "albatross"
 path = "src/main.rs"
+test = false
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "process", "fs", "time", "signal", "sync"] }

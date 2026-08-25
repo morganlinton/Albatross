@@ -84,6 +84,9 @@ few that aren't usual:
 - **Portable Agent Skills.** Discover standard `SKILL.md` bundles from project,
   user, npm, and Git locations; invoke them with `/skill:name`, or let the model
   load matching instructions progressively through an approval-aware tool.
+- **Embeddable Rust SDK.** Build an in-process agent session with structured
+  streaming events, conversation snapshots, cancellation, approvals, built-in
+  or custom tools, and the same providers and Agent Skills as the CLI.
 - **`/auth` instead of `.env`.** Paste API keys once into a `0600` file
   under `~/.config/albatross/`. Env vars still win when set.
 - **Approval gates you can live with.** Every mutating call shows you the
@@ -832,6 +835,15 @@ listed with `/skills`, and activated with `/skill:name [optional task]`.
 Only names and descriptions enter the initial prompt; full instructions and
 resource indexes load on demand. See [docs/SKILLS.md](docs/SKILLS.md) for the
 format, precedence rules, progressive disclosure, and trust behavior.
+
+### Rust SDK
+
+The crate exposes `albatross_cli::sdk::AgentBuilder` and `AgentSession` for
+embedding the agent loop in another Rust application. Sessions retain history,
+stream typed lifecycle and agent events, support cancellation and snapshots,
+and default to denying approval-gated actions until the host supplies an
+approval provider. See [docs/SDK.md](docs/SDK.md) and the
+[minimal example](examples/sdk_minimal.rs).
 
 ### Hooks
 

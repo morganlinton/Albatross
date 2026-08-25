@@ -733,6 +733,7 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
         .insert("input_tokens", serde_json::json!(result.input_tokens))
         .insert("output_tokens", serde_json::json!(result.output_tokens))
         .insert("hit_step_limit", serde_json::json!(result.hit_step_limit))
+        .insert("cancelled", serde_json::json!(result.cancelled))
         .into_value();
     for error in extensions
         .emit(HookEventName::Stop.key_label(), stop_payload.clone())

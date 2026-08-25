@@ -38,6 +38,7 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "apply_patch",
     "batch_edit",
     "critique",
+    "task",
     "file_read",
     "file_write",
     "file_edit",
@@ -48,6 +49,7 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "run_tests",
     "shell",
     "ship_status",
+    "update_plan",
     "web_fetch",
 ];
 
@@ -928,9 +930,7 @@ impl AgentConfig {
     }
 
     pub fn render_system_prompt_for_tools(&self, tools: &[String]) -> String {
-        let cwd = std::env::current_dir()
-            .map(|p| p.display().to_string())
-            .unwrap_or_default();
+        let cwd = self.workspace_root.as_str();
         let tool_list = if tools.is_empty() {
             "none".to_string()
         } else {
@@ -938,7 +938,7 @@ impl AgentConfig {
         };
         let mut prompt = self
             .system_prompt
-            .replace("{cwd}", &cwd)
+            .replace("{cwd}", cwd)
             .replace("{tools}", &tool_list);
         if self.mode == OperatorMode::Ship {
             prompt.push_str(

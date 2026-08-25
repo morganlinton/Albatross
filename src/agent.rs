@@ -96,6 +96,7 @@ pub struct RunResult {
     /// True when the loop stopped because it hit `max_steps` while the model
     /// still had pending tool calls (i.e. it was cut off, not finished).
     pub hit_step_limit: bool,
+    pub cancelled: bool,
     pub metrics: TurnMetrics,
 }
 
@@ -1070,6 +1071,7 @@ where
         transcript_rewritten,
         conversation_summary,
         hit_step_limit,
+        cancelled,
         metrics,
     })
 }

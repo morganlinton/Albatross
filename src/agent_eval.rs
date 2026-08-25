@@ -656,6 +656,7 @@ mod tests {
                 transcript_rewritten: false,
                 conversation_summary: None,
                 hit_step_limit: false,
+                cancelled: false,
                 metrics: crate::turn_trace::TurnMetrics::default(),
             },
             &[],

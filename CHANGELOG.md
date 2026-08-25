@@ -17,6 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Add Agent Skills standard discovery across project, user, npm, and Git
   sources, `/skill:name` completion and activation, validation diagnostics,
   precedence rules, and progressive model activation with project approval.
+- Add an embeddable Rust SDK with reusable in-memory sessions, structured event
+  streaming, conversation snapshots, cancellation, configurable providers,
+  built-in and custom tools, host approvals, and Agent Skills discovery.
 
 ## [2.3.0] - 2026-08-03
 
