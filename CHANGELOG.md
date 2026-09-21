@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Includes `/jev` controls, shadow mode, SDK support, confidence thresholds,
   bounded requests, and separate routing usage/decision reports.
 
+### Security
+
+- Update locked `rustls` and `anyhow` dependencies to address
+  RUSTSEC-2026-0285 and RUSTSEC-2026-0190, respectively.
+
 ## [2.4.0] - 2026-08-25
 
 ### Added
