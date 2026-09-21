@@ -140,3 +140,9 @@ Each subscriber receives `TurnStarted`, all low-level `AgentEvent` values, then 
 The first SDK release intentionally focuses on the reusable in-process session core. CLI presentation, session-tree navigation, live extension/MCP reload, routing menus, and terminal history remain CLI concerns. Applications that need process isolation or a language-neutral boundary should continue to invoke the CLI; a dedicated JSON-RPC mode is a separate follow-up.
 
 See [`examples/sdk_minimal.rs`](../examples/sdk_minimal.rs) for a compilable example.
+
+## Jev-first routing
+
+Use `AgentBuilder::jev(JevConfig)` to opt into bounded direct answers before the
+main model. `TurnStats::jev` reports routing usage separately from main-model
+tokens. See [Jev Mode](JEV_HARNESS.md) for examples, thresholds, and data handling.

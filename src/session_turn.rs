@@ -548,6 +548,15 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
         }
         UserContent::Parts(parts)
     };
+    let routing = tokio::select! {
+        biased;
+        _ = tokio::signal::ctrl_c() => anyhow::bail!("Turn cancelled during Jev routing"),
+        routing = crate::jev::route_request(&state.config.jev, &content, None) => routing,
+    };
+    let jev_direct = routing.as_ref().is_some_and(|r| r.answers_directly());
+    if let Some(route) = &routing {
+        println!("  {}", route.report.status_line());
+    }
     let user_msg = ChatMessage::User { content };
     state.messages.push(user_msg.clone());
     let _ = save_message(&state.session_path, &user_msg);
@@ -593,7 +602,8 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
     let request_only_context_bytes = compact_budget
         .effective_total_bytes
         .saturating_sub(raw_compact_budget.effective_total_bytes);
-    let auto_compact_due = compact_guard.auto_compact
+    let auto_compact_due = !jev_direct
+        && compact_guard.auto_compact
         && should_compact(
             &compact_budget,
             compact_guard.effective_limit_bytes,
@@ -624,7 +634,7 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
     } else {
         true
     };
-    if compact_allowed {
+    if compact_allowed && !jev_direct {
         let mut compact_ctx = CompactSessionContext {
             messages: &mut state.messages,
             system_prompt: &base_system_prompt,
@@ -698,7 +708,8 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
         &system_prompt,
         &active_tool_names,
     );
-    if std::env::var("WARMUP").as_deref() != Ok("false")
+    if !jev_direct
+        && std::env::var("WARMUP").as_deref() != Ok("false")
         && state.warmed_fingerprint != Some(fingerprint)
     {
         let loader = Loader::start(
@@ -807,6 +818,7 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
             Some(trace),
             0,
             Some(agent_hooks),
+            routing,
         )
         .await
     };
@@ -948,38 +960,39 @@ pub async fn run_user_turn(state: &mut AppState, opts: TurnOptions) -> Result<Tu
             }
         }
     }
-    let route_context = state
-        .active_route
-        .as_ref()
-        .filter(|context| context.backend == state.config.backend && context.model == state.model);
-    let role = route_context
-        .map(|context| context.role.as_str())
-        .unwrap_or(opts.source);
-    let receipt = model_call_event(ModelCallInput {
-        route_id: route_context.map(|context| context.route_id.as_str()),
-        session_id: &session_id(&state.session_path),
-        role,
-        backend: state.config.backend,
-        requested_model: &state.model,
-        actual_model: res.actual_model.as_deref(),
-        provider: res.provider.as_deref(),
-        requested_effort: state.active_effort,
-        input_tokens: res.input_tokens,
-        output_tokens: res.output_tokens,
-        cached_input_tokens: res.cached_input_tokens,
-        cache_creation_input_tokens: res.cache_creation_input_tokens,
-        cost_usd: turn_cost,
-        cost_source,
-        duration_ms: metrics.model_ms,
-        status: if res.hit_step_limit {
-            "step-limit"
-        } else {
-            "ok"
-        },
-    });
-    if let Err(error) = append_event(&state.config.workspace_root, &receipt) {
-        if state.renderer.verbose_enabled() {
-            println!("  {YELLOW}!{RESET} {DIM}route receipt not recorded: {error}{RESET}");
+    if !res.jev_report.as_ref().is_some_and(|r| r.direct_answer) {
+        let route_context = state.active_route.as_ref().filter(|context| {
+            context.backend == state.config.backend && context.model == state.model
+        });
+        let role = route_context
+            .map(|context| context.role.as_str())
+            .unwrap_or(opts.source);
+        let receipt = model_call_event(ModelCallInput {
+            route_id: route_context.map(|context| context.route_id.as_str()),
+            session_id: &session_id(&state.session_path),
+            role,
+            backend: state.config.backend,
+            requested_model: &state.model,
+            actual_model: res.actual_model.as_deref(),
+            provider: res.provider.as_deref(),
+            requested_effort: state.active_effort,
+            input_tokens: res.input_tokens,
+            output_tokens: res.output_tokens,
+            cached_input_tokens: res.cached_input_tokens,
+            cache_creation_input_tokens: res.cache_creation_input_tokens,
+            cost_usd: turn_cost,
+            cost_source,
+            duration_ms: metrics.model_ms,
+            status: if res.hit_step_limit {
+                "step-limit"
+            } else {
+                "ok"
+            },
+        });
+        if let Err(error) = append_event(&state.config.workspace_root, &receipt) {
+            if state.renderer.verbose_enabled() {
+                println!("  {YELLOW}!{RESET} {DIM}route receipt not recorded: {error}{RESET}");
+            }
         }
     }
 
@@ -1286,6 +1299,71 @@ mod cost_tests {
             message,
             ChatMessage::Assistant { content: Some(content), .. } if content == "Hello from mock."
         )));
+    }
+
+    #[tokio::test]
+    async fn jev_direct_turn_skips_warmup_and_pressure_compaction_and_persists() {
+        use crate::jev::{
+            tests::{mock_config, response, PROMPT},
+            JevMode,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let backend = mock_backend(&listener);
+        let (jev, server) =
+            mock_config(JevMode::Active, response("error_category", "rate_limit"), 0);
+        let dir = tempfile::tempdir().unwrap();
+        let config = AgentConfig {
+            backend: BackendName::Ollama,
+            model_override: Some("mock".into()),
+            workspace_root: dir.path().display().to_string(),
+            session_dir: dir.path().join(".sessions").display().to_string(),
+            tools: vec![],
+            context: crate::config::ContextConfig {
+                auto_compact: Some(true),
+                max_bytes: Some(1024),
+                ..Default::default()
+            },
+            jev,
+            ..Default::default()
+        };
+        crate::session::init_session_dir(&config.session_dir).unwrap();
+        let mut state = test_state(config, backend);
+        for _ in 0..20 {
+            state.messages.push(ChatMessage::User {
+                content: "old context".repeat(200).into(),
+            });
+        }
+        let result = tokio::time::timeout(
+            Duration::from_secs(3),
+            run_user_turn(
+                &mut state,
+                TurnOptions {
+                    user_prompt: PROMPT.into(),
+                    auto_verify_tests: false,
+                    yolo_approve: false,
+                    source: "test",
+                },
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(result.run_result.metrics.steps, 0);
+        assert!(result.run_result.jev_report.unwrap().direct_answer);
+        assert!(!result.run_result.transcript_rewritten);
+        assert_eq!(state.messages.len(), 23); // system + 20 old + user + answer
+        assert!(state.warmed_fingerprint.is_none());
+        assert!(state.context_guard_notice.is_none());
+        let saved = load_messages(&state.session_path).unwrap();
+        assert!(
+            matches!(saved.last(), Some(ChatMessage::Assistant {content:Some(answer), ..}) if answer == "Error category: rate limit / quota.")
+        );
+        assert_eq!(
+            listener.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        server.join().unwrap();
     }
 
     #[test]

@@ -42,6 +42,7 @@ mod hardware;
 mod hooks;
 mod input;
 mod iterate_loop;
+mod jev;
 mod loader;
 mod markdown;
 mod mcp;

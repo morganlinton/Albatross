@@ -98,6 +98,7 @@ pub struct RunResult {
     pub hit_step_limit: bool,
     pub cancelled: bool,
     pub metrics: TurnMetrics,
+    pub jev_report: Option<crate::jev::JevReport>,
 }
 
 #[derive(Debug, Clone)]
@@ -318,6 +319,7 @@ pub async fn run_agent<F>(
     trace: Option<SharedTurnTrace>,
     depth: u32,
     hooks: Option<AgentHooks>,
+    routing: Option<crate::jev::RoutingOutcome>,
 ) -> Result<RunResult>
 where
     F: FnMut(AgentEvent),
@@ -359,6 +361,48 @@ where
             }
         }
     };
+
+    let mut jev_report = None;
+    if let Some(mut routing) = routing {
+        if cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
+            routing.answer = None;
+            routing.report.direct_answer = false;
+            routing.report.fallback = Some("cancelled".into());
+        }
+        log_trace(TracePayload::HarnessDecision {
+            report: serde_json::to_value(&routing.report).unwrap_or_default(),
+        });
+        if let Some(answer) = routing.answer {
+            on_event(AgentEvent::Text {
+                delta: answer.clone(),
+            });
+            messages.push(ChatMessage::Assistant {
+                content: Some(answer),
+                tool_calls: Vec::new(),
+                provider_content: Vec::new(),
+            });
+            metrics.ttft_ms = Some(routing.report.elapsed_ms);
+            metrics.total_ms =
+                turn_started.elapsed().as_millis() as u64 + routing.report.elapsed_ms;
+            return Ok(RunResult {
+                messages,
+                input_tokens: 0,
+                output_tokens: 0,
+                cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                reported_cost_usd: None,
+                actual_model: Some(routing.report.model.clone()),
+                provider: Some("typesafe".into()),
+                transcript_rewritten: false,
+                conversation_summary,
+                hit_step_limit: false,
+                cancelled: false,
+                metrics,
+                jev_report: Some(routing.report),
+            });
+        }
+        jev_report = Some(routing.report);
+    }
 
     for step in 0..max_steps {
         if cancel.as_ref().map(|c| c.is_cancelled()).unwrap_or(false) {
@@ -410,7 +454,10 @@ where
                     if !saw_first_token {
                         saw_first_token = true;
                         if !ttft_recorded {
-                            metrics.ttft_ms = Some(turn_started.elapsed().as_millis() as u64);
+                            metrics.ttft_ms = Some(
+                                turn_started.elapsed().as_millis() as u64
+                                    + jev_report.as_ref().map_or(0, |r| r.elapsed_ms),
+                            );
                             ttft_recorded = true;
                         }
                     }
@@ -422,7 +469,10 @@ where
                     if !saw_first_token && !content.is_empty() {
                         saw_first_token = true;
                         if !ttft_recorded {
-                            metrics.ttft_ms = Some(turn_started.elapsed().as_millis() as u64);
+                            metrics.ttft_ms = Some(
+                                turn_started.elapsed().as_millis() as u64
+                                    + jev_report.as_ref().map_or(0, |r| r.elapsed_ms),
+                            );
                             ttft_recorded = true;
                         }
                     }
@@ -1057,7 +1107,8 @@ where
 
     metrics.steps = steps_taken;
     metrics.hit_step_limit = hit_step_limit;
-    metrics.total_ms = turn_started.elapsed().as_millis() as u64;
+    metrics.total_ms =
+        turn_started.elapsed().as_millis() as u64 + jev_report.as_ref().map_or(0, |r| r.elapsed_ms);
 
     Ok(RunResult {
         messages,
@@ -1073,6 +1124,7 @@ where
         hit_step_limit,
         cancelled,
         metrics,
+        jev_report,
     })
 }
 

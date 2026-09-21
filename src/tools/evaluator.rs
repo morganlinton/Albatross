@@ -184,6 +184,7 @@ pub async fn run_evaluation(
         trace,
         1,
         hooks,
+        None, // evaluator cloud consent is independent of the main harness
     )
     .await;
 

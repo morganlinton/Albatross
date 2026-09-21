@@ -18,6 +18,7 @@ use crate::tools::build_tools_for_names;
 pub use crate::agent::{AgentEvent, ApprovalProvider};
 pub use crate::backends::BackendName;
 pub use crate::cancel::CancellationToken;
+pub use crate::jev::{JevConfig, JevMode, JevReport};
 pub use crate::model_system::EffortLevel;
 pub use crate::openai::{ChatMessage as Message, ImageUrl, UserContent, UserContentPart};
 pub use crate::tools::{Tool, ToolPreview};
@@ -58,6 +59,8 @@ pub struct TurnStats {
     pub provider: Option<String>,
     pub hit_step_limit: bool,
     pub cancelled: bool,
+    /// Separate routing usage; main-model counters above exclude Jev.
+    pub jev: Option<JevReport>,
 }
 
 /// Result returned after an agent turn reaches a natural stop or its step
@@ -141,6 +144,7 @@ pub struct AgentBuilder {
     discover_skills: bool,
     snapshot: Option<SessionSnapshot>,
     event_capacity: usize,
+    jev: JevConfig,
 }
 
 impl Default for AgentBuilder {
@@ -160,6 +164,7 @@ impl Default for AgentBuilder {
             discover_skills: true,
             snapshot: None,
             event_capacity: 256,
+            jev: JevConfig::default(),
         }
     }
 }
@@ -167,6 +172,13 @@ impl Default for AgentBuilder {
 impl AgentBuilder {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Opt into Jev-first routing. Requests may be sent to TypeSafe even when
+    /// the main backend is local. The API key is read from TYPESAFE_API_KEY.
+    pub fn jev(mut self, config: JevConfig) -> Self {
+        self.jev = config;
+        self
     }
 
     pub fn workspace_root(mut self, path: impl Into<PathBuf>) -> Self {
@@ -354,6 +366,7 @@ impl AgentBuilder {
             abort: AbortHandle::default(),
             skills,
             diagnostics,
+            jev: self.jev,
         })
     }
 }
@@ -373,6 +386,7 @@ pub struct AgentSession {
     abort: AbortHandle,
     skills: Vec<DiscoveredSkill>,
     diagnostics: Vec<String>,
+    jev: JevConfig,
 }
 
 impl AgentSession {
@@ -449,12 +463,15 @@ impl AgentSession {
         });
 
         let mut initial_messages = self.messages.clone();
-        initial_messages.push(Message::User { content });
+        initial_messages.push(Message::User {
+            content: content.clone(),
+        });
         let cancel = CancellationToken::new();
         if let Ok(mut current) = self.abort.current.lock() {
             *current = Some(cancel.clone());
         }
         let events = self.events.clone();
+        let routing = crate::jev::route_request(&self.jev, &content, Some(&cancel)).await;
         let result = run_agent(
             &self.http,
             &self.backend,
@@ -473,6 +490,7 @@ impl AgentSession {
             None,
             0,
             None,
+            routing,
         )
         .await;
         if let Ok(mut current) = self.abort.current.lock() {
@@ -578,6 +596,7 @@ fn turn_result(result: RunResult) -> TurnResult {
             provider: result.provider,
             hit_step_limit: result.hit_step_limit,
             cancelled: result.cancelled,
+            jev: result.jev_report,
         },
     }
 }
@@ -644,6 +663,8 @@ mod tests {
             }],
         };
         let session = AgentBuilder::new()
+            // This tests snapshot replacement, independent of installed skills.
+            .discover_skills(false)
             .system_prompt("new")
             .resume(snapshot)
             .build()
@@ -774,5 +795,39 @@ mod tests {
             SessionEvent::Agent(AgentEvent::ToolResult { name, output, .. })
                 if name == "echo" && output.contains("hello")
         )));
+    }
+}
+
+#[cfg(test)]
+mod jev_tests {
+    use super::*;
+    use crate::jev::tests::{mock_config, response, PROMPT};
+
+    #[tokio::test]
+    async fn sdk_jev_direct_answers_are_saved_and_reported_separately() {
+        let (config, server) =
+            mock_config(JevMode::Active, response("error_category", "rate_limit"), 0);
+        let mut session = AgentBuilder::new()
+            .backend(BackendName::Ollama)
+            .base_url("http://127.0.0.1:9/v1")
+            .model("must-not-be-called")
+            .discover_skills(false)
+            .jev(config)
+            .build()
+            .unwrap();
+        let mut events = session.subscribe();
+        let result = session.prompt(PROMPT).await.unwrap();
+        assert_eq!(result.response, "Error category: rate limit / quota.");
+        assert_eq!(result.stats.input_tokens, 0);
+        assert_eq!(result.stats.jev.unwrap().input_tokens, 100);
+        assert_eq!(session.messages().len(), 3);
+        let mut completed = false;
+        while let Ok(event) = events.try_recv() {
+            if let SessionEvent::TurnCompleted(stats) = event {
+                completed = stats.jev.unwrap().direct_answer;
+            }
+        }
+        assert!(completed);
+        server.join().unwrap();
     }
 }

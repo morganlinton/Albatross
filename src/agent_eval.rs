@@ -62,6 +62,8 @@ pub struct AgentEvalRunResult {
     pub output_tokens: u32,
     pub transcript_path: String,
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jev: Option<crate::jev::JevReport>,
 }
 
 struct EvalApproval;
@@ -451,6 +453,9 @@ pub async fn run_agent_eval(
     let mut tool_calls = Vec::new();
     let start = Instant::now();
     let mut approval = EvalApproval;
+    let routing =
+        crate::jev::route_request(&eval_config.jev, &fixture.prompt.clone().into(), None).await;
+    let jev_report = routing.as_ref().map(|r| r.report.clone());
     let run = run_agent(
         &http,
         backend_desc,
@@ -471,6 +476,7 @@ pub async fn run_agent_eval(
         None,
         0,
         None,
+        routing,
     )
     .await;
     let elapsed_ms = start.elapsed().as_millis();
@@ -501,6 +507,7 @@ pub async fn run_agent_eval(
                 output_tokens: result.output_tokens,
                 transcript_path: transcript_path.display().to_string(),
                 error: None,
+                jev: result.jev_report,
             })
         }
         Err(e) => Ok(AgentEvalRunResult {
@@ -517,6 +524,7 @@ pub async fn run_agent_eval(
             output_tokens: 0,
             transcript_path: transcript_path.display().to_string(),
             error: Some(e.to_string()),
+            jev: jev_report,
         }),
     }
 }
@@ -658,6 +666,7 @@ mod tests {
                 hit_step_limit: false,
                 cancelled: false,
                 metrics: crate::turn_trace::TurnMetrics::default(),
+                jev_report: None,
             },
             &[],
         );

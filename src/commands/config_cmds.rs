@@ -6,6 +6,10 @@ use super::*;
 
 pub(super) fn cmd_config(state: &AppState) {
     println!(
+        "  {DIM}jev{RESET}              {}",
+        state.config.jev.mode.as_str()
+    );
+    println!(
         "  {DIM}mode{RESET}             {CYAN}{}{RESET}",
         state.config.mode.as_str()
     );
@@ -1375,6 +1379,34 @@ pub(super) fn cmd_fusion(args: &str, state: &mut AppState) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn cmd_jev(args: &str, state: &mut AppState) {
+    let args = args.trim();
+    if !args.is_empty() && args != "status" {
+        let Some(mode) = crate::jev::JevMode::parse(args) else {
+            println!("  Usage: /jev [on|active|shadow|off|status]");
+            return;
+        };
+        state.config.jev.mode = mode;
+    }
+    println!(
+        "  Jev mode: {} · model {} · confidence ≥ {:.2} · probability ≥ {:.2}",
+        state.config.jev.mode.as_str(),
+        state.config.jev.model,
+        state.config.jev.min_confidence,
+        state.config.jev.min_probability
+    );
+    println!("  Direct answers: supplied-error category and retryability. Other requests use the main LLM.");
+    if state.config.jev.mode != crate::jev::JevMode::Off {
+        println!("  Sends current request text to TypeSafe. Session setting; persist with jev.mode in agent.config.json.");
+        if std::env::var("TYPESAFE_API_KEY")
+            .ok()
+            .is_none_or(|key| key.trim().is_empty())
+        {
+            println!("  TYPESAFE_API_KEY is missing; requests will fall back to the main LLM.");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1433,6 +1465,24 @@ mod tests {
             trace_enabled: false,
             config,
         }
+    }
+
+    #[test]
+    fn jev_command_changes_only_routing_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = test_state(dir.path());
+        let approval = state.config.approval_policy;
+        for (command, expected) in [
+            ("on", crate::jev::JevMode::Active),
+            ("shadow", crate::jev::JevMode::Shadow),
+            ("off", crate::jev::JevMode::Off),
+        ] {
+            cmd_jev(command, &mut state);
+            assert_eq!(state.config.jev.mode, expected);
+            assert_eq!(state.config.approval_policy, approval);
+        }
+        cmd_jev("unknown", &mut state);
+        assert_eq!(state.config.jev.mode, crate::jev::JevMode::Off);
     }
 
     #[test]

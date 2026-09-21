@@ -133,6 +133,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("/setup", "Run the setup wizard and write agent.config.json"),
     ("/new", "Start a fresh conversation"),
     ("/clear", "Clear the screen"),
+    ("/jev", "Jev-first routing: on, shadow, off, status"),
     ("/config", "Show resolved configuration"),
     (
         "/mode",
@@ -295,6 +296,7 @@ pub async fn dispatch(input: &str, state: &mut AppState) -> Result<()> {
         "/path" => session::cmd_path(&args, state).await?,
         "/paths" => session::cmd_paths(state)?,
         "/config" => config_cmds::cmd_config(state),
+        "/jev" => config_cmds::cmd_jev(&args, state),
         "/mode" => config_cmds::cmd_mode(&args, state),
         "/shipcheck" => cmd_shipcheck(&args, state)?,
         "/ship" => cmd_ship(&args, state).await?,

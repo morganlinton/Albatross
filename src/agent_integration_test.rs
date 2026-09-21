@@ -100,6 +100,7 @@ async fn read_and_explain_mock_loop() {
         None,
         0,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -170,6 +171,7 @@ async fn step_limit_surfaces_hit_step_limit() {
         None,
         None,
         0,
+        None,
         None,
     )
     .await
@@ -276,6 +278,7 @@ async fn pre_tool_use_hook_block_returns_tool_error() {
         None,
         0,
         Some(hooks),
+        None,
     )
     .await
     .unwrap();
@@ -376,6 +379,7 @@ async fn pre_tool_use_hook_stop_ends_loop_without_tool_execution() {
         None,
         0,
         Some(hooks),
+        None,
     )
     .await
     .unwrap();
@@ -493,6 +497,7 @@ async fn pre_tool_use_hook_stop_suppresses_pending_tools_in_same_batch() {
         None,
         0,
         Some(hooks),
+        None,
     )
     .await
     .unwrap();
@@ -623,6 +628,7 @@ async fn pre_tool_use_hook_rewrite_updates_executed_and_stored_tool_input() {
         None,
         0,
         Some(hooks),
+        None,
     )
     .await
     .unwrap();
@@ -782,6 +788,7 @@ async fn task_uses_subagent_stop_without_generic_post_tool_use() {
         None,
         0,
         Some(hooks),
+        None,
     )
     .await
     .unwrap();
@@ -908,6 +915,7 @@ async fn plan_updated_hook_uses_raw_update_plan_output_before_compaction() {
         None,
         0,
         Some(hooks),
+        None,
     )
     .await
     .unwrap();
@@ -918,4 +926,200 @@ async fn plan_updated_hook_uses_raw_update_plan_output_before_compaction() {
 
 fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+#[tokio::test]
+async fn jev_direct_answer_skips_main_model_and_tools() {
+    use crate::jev::{
+        route_request,
+        tests::{mock_config, response, PROMPT},
+        JevMode,
+    };
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let backend = mock_backend(&listener);
+    let (config, server) =
+        mock_config(JevMode::Active, response("error_category", "rate_limit"), 0);
+    let routing = route_request(&config, &PROMPT.into(), None).await;
+    let messages = vec![
+        ChatMessage::System {
+            content: "system".into(),
+        },
+        ChatMessage::User {
+            content: PROMPT.into(),
+        },
+    ];
+    let mut text = String::new();
+    let mut tool_count = 0;
+    let result = run_agent(
+        &build_http_client(),
+        &backend,
+        "must-not-be-called",
+        None,
+        messages,
+        vec![],
+        5,
+        |event| match event {
+            AgentEvent::Text { delta } => text.push_str(&delta),
+            AgentEvent::ToolCall { .. } => tool_count += 1,
+            _ => {}
+        },
+        None,
+        None,
+        None,
+        None,
+        None,
+        0,
+        None,
+        routing,
+    )
+    .await
+    .unwrap();
+    assert_eq!(text, "Error category: rate limit / quota.");
+    assert_eq!(result.messages.len(), 3);
+    assert_eq!(result.metrics.steps, 0);
+    assert_eq!(result.metrics.model_ms, 0);
+    assert_eq!(result.input_tokens, 0);
+    assert_eq!(result.output_tokens, 0);
+    assert_eq!(result.jev_report.as_ref().unwrap().input_tokens, 100);
+    assert!(result.jev_report.unwrap().direct_answer);
+    assert_eq!(tool_count, 0);
+    assert!(!result.cancelled && !result.hit_step_limit);
+    assert_eq!(result.provider.as_deref(), Some("typesafe"));
+    crate::context_guard::validate_transcript(&result.messages).unwrap();
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+    server.join().unwrap();
+}
+
+#[tokio::test]
+async fn jev_fallback_and_shadow_use_normal_loop_and_permissions() {
+    use crate::jev::{
+        route_request,
+        tests::{mock_config, response, PROMPT},
+        JevMode,
+    };
+    use serde_json::json;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct DeniedTool(Arc<AtomicUsize>);
+    #[async_trait::async_trait]
+    impl Tool for DeniedTool {
+        fn name(&self) -> &str {
+            "count"
+        }
+        fn description(&self) -> &str {
+            "test"
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            json!({"type":"object"})
+        }
+        fn require_approval(&self, _: &serde_json::Value) -> bool {
+            true
+        }
+        async fn execute(&self, _: serde_json::Value) -> serde_json::Value {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            json!({"ok":true})
+        }
+    }
+    for (mode, body) in [
+        (JevMode::Active, response("main_llm", "uncertain")),
+        (JevMode::Shadow, response("error_category", "rate_limit")),
+        (JevMode::Active, json!({"malformed":true})),
+    ] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let backend = mock_backend(&listener);
+        let main_server = spawn_mock_server(listener, vec![
+            concat!("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"count\",\"arguments\":\"{}\"}}]}}]}\n\n", "data: [DONE]\n\n"),
+            concat!("data: {\"choices\":[{\"delta\":{\"content\":\"Main model answer\"}}],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":3}}\n\n", "data: [DONE]\n\n")
+        ]);
+        let (config, jev_server) = mock_config(mode, body, 0);
+        let routing = route_request(&config, &PROMPT.into(), None).await;
+        let executed = Arc::new(AtomicUsize::new(0));
+        let result = run_agent(
+            &build_http_client(),
+            &backend,
+            "mock",
+            None,
+            vec![ChatMessage::User {
+                content: PROMPT.into(),
+            }],
+            vec![Arc::new(DeniedTool(executed.clone()))],
+            4,
+            |_| {},
+            None,
+            None,
+            None,
+            None,
+            None,
+            0,
+            None,
+            routing,
+        )
+        .await
+        .unwrap();
+        assert_eq!(executed.load(Ordering::SeqCst), 0);
+        assert_eq!(result.metrics.steps, 2);
+        assert_eq!(result.input_tokens, 7);
+        assert!(!result.jev_report.unwrap().direct_answer);
+        assert!(result
+            .messages
+            .iter()
+            .any(|m| matches!(m, ChatMessage::Tool {content,..} if content.contains("denied"))));
+        assert!(
+            matches!(result.messages.last(), Some(ChatMessage::Assistant {content:Some(answer), ..}) if answer == "Main model answer")
+        );
+        jev_server.join().unwrap();
+        main_server.join().unwrap();
+    }
+}
+
+#[tokio::test]
+async fn jev_cancelled_after_routing_emits_no_answer_or_model_call() {
+    use crate::jev::{
+        route_request,
+        tests::{mock_config, response, PROMPT},
+        JevMode,
+    };
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let backend = mock_backend(&listener);
+    let (config, server) =
+        mock_config(JevMode::Active, response("error_category", "rate_limit"), 0);
+    let routing = route_request(&config, &PROMPT.into(), None).await;
+    let cancel = crate::cancel::CancellationToken::new();
+    cancel.cancel();
+    let mut emitted = false;
+    let result = run_agent(
+        &build_http_client(),
+        &backend,
+        "mock",
+        None,
+        vec![ChatMessage::User {
+            content: PROMPT.into(),
+        }],
+        vec![],
+        5,
+        |_| emitted = true,
+        None,
+        Some(cancel),
+        None,
+        None,
+        None,
+        0,
+        None,
+        routing,
+    )
+    .await
+    .unwrap();
+    assert!(result.cancelled);
+    assert!(!emitted);
+    assert!(!result.jev_report.unwrap().direct_answer);
+    assert_eq!(result.messages.len(), 1);
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+    server.join().unwrap();
 }

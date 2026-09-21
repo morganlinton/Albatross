@@ -31,6 +31,7 @@ mod hardware;
 mod hooks;
 mod input;
 mod iterate_loop;
+mod jev;
 mod loader;
 mod markdown;
 mod mcp;
@@ -679,6 +680,10 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
     if let Some(tool) = crate::skills::activation_tool(&config.skills) {
         tools.push(tool);
     }
+    let routing = crate::jev::route_request(&config.jev, &prompt.clone().into(), None).await;
+    if let Some(route) = &routing {
+        eprintln!("{}", route.report.status_line());
+    }
     let result = run_agent(
         &http,
         &backend_desc,
@@ -719,9 +724,10 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
         None,
         None,
         None,
-        None,
+        Some(trace.clone()),
         0,
         Some(agent_hooks),
+        routing,
     )
     .await?;
     for message in &result.messages {
@@ -730,6 +736,7 @@ async fn run_one_shot(opts: CliOneShot) -> anyhow::Result<()> {
     let stop_payload = hook_context
         .payload(HookEventName::Stop)
         .insert("metrics", serde_json::json!(result.metrics.clone()))
+        .insert("jev", serde_json::json!(result.jev_report))
         .insert("input_tokens", serde_json::json!(result.input_tokens))
         .insert("output_tokens", serde_json::json!(result.output_tokens))
         .insert("hit_step_limit", serde_json::json!(result.hit_step_limit))
@@ -976,7 +983,9 @@ async fn main() -> anyhow::Result<()> {
     if let Err(hint) = probe {
         println!("  {YELLOW}!{RESET} {DIM}Provider not reachable: {hint}{RESET}");
         println!("  {DIM}You can still type /provider to switch, or fix and retry.{RESET}");
-    } else if std::env::var("WARMUP").as_deref() != Ok("false") {
+    } else if config.jev.mode == crate::jev::JevMode::Off
+        && std::env::var("WARMUP").as_deref() != Ok("false")
+    {
         let mut warmup_tool_names = select_tool_names(&config, "");
         if !config.skills.is_empty() {
             warmup_tool_names.push("activate_skill".into());

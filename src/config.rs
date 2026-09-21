@@ -704,6 +704,7 @@ pub struct AgentConfig {
     pub fable: FableUsageConfig,
     pub slash_commands: bool,
     pub context: ContextConfig,
+    pub jev: crate::jev::JevConfig,
     pub history: HistoryConfig,
     pub project_memory: ProjectMemoryConfig,
     pub checkpoints: CheckpointConfig,
@@ -791,6 +792,7 @@ impl Default for AgentConfig {
             fable: FableUsageConfig::default(),
             slash_commands: true,
             context: ContextConfig::default(),
+            jev: crate::jev::JevConfig::default(),
             history: HistoryConfig::default(),
             project_memory: ProjectMemoryConfig::default(),
             checkpoints: CheckpointConfig::default(),
@@ -837,6 +839,7 @@ struct FileConfig {
     #[serde(rename = "slashCommands")]
     slash_commands: Option<bool>,
     context: Option<ContextConfig>,
+    jev: Option<crate::jev::JevConfig>,
     history: Option<HistoryConfig>,
     #[serde(rename = "projectMemory")]
     project_memory: Option<ProjectMemoryConfig>,
@@ -1367,6 +1370,9 @@ pub fn load_config() -> AgentConfig {
                     }
                     if let Some(c) = file.context {
                         config.context = c;
+                    }
+                    if let Some(j) = file.jev {
+                        config.jev = j;
                     }
                     if let Some(h) = file.history {
                         config.history = h;

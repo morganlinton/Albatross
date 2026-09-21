@@ -120,6 +120,9 @@ impl TurnMetrics {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum TracePayload {
+    HarnessDecision {
+        report: Value,
+    },
     ToolCall {
         call_id: String,
         name: String,

@@ -1155,6 +1155,14 @@ the main model and prints a warning.
 
 ---
 
+### Experimental Jev Mode
+
+Jev Mode puts TypeSafe AI's decision model before the main LLM. Supported questions
+about supplied errors can receive a fixed direct answer; explanations, coding,
+tools, and uncertainty fall back to the normal agent loop. Use `/jev shadow` to
+observe decisions or `/jev on` to enable direct answers after setting
+`TYPESAFE_API_KEY`. Off by default. See [Jev Mode setup and design](docs/JEV_HARNESS.md).
+
 ## Configuration
 
 Resolution order (later overrides earlier):

@@ -386,6 +386,7 @@ mod tests {
             output_tokens: 20,
             transcript_path: "session.jsonl".into(),
             error: None,
+            jev: None,
         }];
 
         let (json_path, md_path) = save_battle_results(dir.path().to_str().unwrap(), &results)

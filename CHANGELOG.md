@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Add opt-in Jev Mode: classify requests before the main LLM, answer supported
+  bounded error questions directly, and fall back to the existing agent loop.
+  Includes `/jev` controls, shadow mode, SDK support, confidence thresholds,
+  bounded requests, and separate routing usage/decision reports.
+
 ## [2.4.0] - 2026-08-25
 
 ### Added

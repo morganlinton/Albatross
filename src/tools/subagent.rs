@@ -125,6 +125,7 @@ impl SubagentTool {
             trace.clone(),
             SUBAGENT_DEPTH,
             hooks,
+            None, // routing applies only to user requests, not delegated tasks
         )
         .await;
 
