@@ -326,6 +326,9 @@ pub async fn list_models(
         // every `/model` open and only expose agent-ready Grok ids.
         return Ok(crate::xai_oauth::grok_model_list());
     }
+    if matches!(backend.name, BackendName::Requesty) {
+        return requesty_list_models(client, backend).await;
+    }
     let url = format!("{}/models", backend.base_url.trim_end_matches('/'));
     let resp = client.get(url).bearer_auth(&backend.api_key).send().await?;
     if !resp.status().is_success() {
@@ -341,6 +344,59 @@ pub async fn list_models(
     }
     let parsed: ModelsResp = resp.json().await?;
     Ok(parsed.data.into_iter().map(|m| m.id).collect())
+}
+
+/// Requesty lists its curated managed policies (`/models/managed`, ids such as
+/// `claude-sonnet-4-5`) ahead of the full `vendor/model` catalog. The catalog
+/// request is authenticated, so it doubles as the key check; the managed list
+/// is best effort.
+async fn requesty_list_models(
+    client: &reqwest::Client,
+    backend: &BackendDescriptor,
+) -> Result<Vec<String>> {
+    let base = backend.base_url.trim_end_matches('/');
+    let catalog = requesty_model_ids(client, backend, format!("{base}/models")).await?;
+    let managed = requesty_model_ids(client, backend, format!("{base}/models/managed"))
+        .await
+        .unwrap_or_default();
+    Ok(merge_requesty_model_ids(managed, catalog))
+}
+
+async fn requesty_model_ids(
+    client: &reqwest::Client,
+    backend: &BackendDescriptor,
+    url: String,
+) -> Result<Vec<String>> {
+    let resp = client.get(url).bearer_auth(&backend.api_key).send().await?;
+    if !resp.status().is_success() {
+        return Err(anyhow!("HTTP {}", resp.status()));
+    }
+    #[derive(Deserialize)]
+    struct ModelsResp {
+        data: Vec<Model>,
+    }
+    #[derive(Deserialize)]
+    struct Model {
+        id: String,
+        #[serde(default)]
+        api: Option<String>,
+    }
+    let parsed: ModelsResp = resp.json().await?;
+    Ok(parsed
+        .data
+        .into_iter()
+        .filter(|m| m.api.as_deref().is_none_or(|api| api == "chat"))
+        .map(|m| m.id)
+        .collect())
+}
+
+fn merge_requesty_model_ids(managed: Vec<String>, catalog: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    managed
+        .into_iter()
+        .chain(catalog)
+        .filter(|id| seen.insert(id.clone()))
+        .collect()
 }
 
 pub async fn chat_oneshot(
@@ -536,7 +592,7 @@ fn apply_effort_to_request(
                 serde_json::json!({ "effort": effort.openrouter_reasoning_effort() }),
             );
         }
-        BackendName::OpenAi | BackendName::Grok => {
+        BackendName::Requesty | BackendName::OpenAi | BackendName::Grok => {
             if let Some(value) = effort.openai_reasoning_effort() {
                 obj.insert("reasoning_effort".into(), Value::String(value.into()));
             }
@@ -1034,6 +1090,62 @@ mod tests {
         let body = request_body(&backend, &req).unwrap();
         assert_eq!(body["reasoning"]["effort"], "xhigh");
         assert!(body.get("effort").is_none());
+    }
+
+    #[test]
+    fn requesty_effort_is_injected_as_reasoning_effort() {
+        let backend = BackendDescriptor {
+            name: BackendName::Requesty,
+            base_url: "https://router.requesty.ai/v1".into(),
+            api_key: "test".into(),
+            is_local: false,
+            openrouter: OpenRouterConfig::default(),
+        };
+        let messages = vec![ChatMessage::User {
+            content: "plan a refactor".into(),
+        }];
+        let req = ChatRequest {
+            model: "openai/gpt-4o-mini",
+            messages: &messages,
+            tools: None,
+            stream: true,
+            stream_options: None,
+            max_tokens: None,
+            prompt_cache_key: Some("sh-deadbeef"),
+            effort: Some(EffortLevel::High),
+        };
+
+        let body = request_body(&backend, &req).unwrap();
+        assert_eq!(body["reasoning_effort"], "high");
+        assert!(body.get("reasoning").is_none());
+        assert!(body.get("prompt_cache_key").is_none());
+        assert!(body.get("plugins").is_none());
+
+        let no_effort = ChatRequest {
+            effort: Some(EffortLevel::None),
+            ..req
+        };
+        let body = request_body(&backend, &no_effort).unwrap();
+        assert!(body.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn requesty_model_ids_put_managed_policies_first() {
+        let managed = vec!["claude-sonnet-4-5".to_string(), "gpt-5.4-mini".to_string()];
+        let catalog = vec![
+            "openai/gpt-4o-mini".to_string(),
+            "gpt-5.4-mini".to_string(),
+            "anthropic/claude-sonnet-4-5".to_string(),
+        ];
+        assert_eq!(
+            merge_requesty_model_ids(managed, catalog),
+            vec![
+                "claude-sonnet-4-5",
+                "gpt-5.4-mini",
+                "openai/gpt-4o-mini",
+                "anthropic/claude-sonnet-4-5",
+            ]
+        );
     }
 
     #[test]

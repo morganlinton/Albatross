@@ -13,6 +13,7 @@ static LOG_DIR: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
 const REDACTED_ENV: &[&str] = &[
     "OPENAI_API_KEY",
     "OPENROUTER_API_KEY",
+    "REQUESTY_API_KEY",
     "LLAMACPP_API_KEY",
     "ANTHROPIC_API_KEY",
 ];

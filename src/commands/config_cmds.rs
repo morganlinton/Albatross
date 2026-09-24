@@ -779,6 +779,7 @@ pub(super) async fn cmd_backend(args: &str, state: &mut AppState) -> Result<()> 
     if !chosen.is_local() && !chosen.is_oauth_login() && backend(chosen).api_key.is_empty() {
         let env_name = match chosen {
             BackendName::Openrouter => "OPENROUTER_API_KEY",
+            BackendName::Requesty => "REQUESTY_API_KEY",
             BackendName::OpenAi => "OPENAI_API_KEY",
             BackendName::Anthropic => "ANTHROPIC_API_KEY",
             BackendName::OpenAiCodex => "ChatGPT login",

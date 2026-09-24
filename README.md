@@ -21,7 +21,7 @@
   <a href="https://crates.io/crates/albatross-cli"><img alt="crates.io" src="https://img.shields.io/crates/v/albatross-cli?label=crates.io&color=2563eb"></a>
   <img alt="Rust" src="https://img.shields.io/badge/Rust-1.86%2B-dea584">
   <img alt="Version" src="https://img.shields.io/badge/version-2.5.0-111827">
-  <img alt="Providers" src="https://img.shields.io/badge/providers-Ollama%20%7C%20LM%20Studio%20%7C%20MLX%20%7C%20llama.cpp%20%7C%20OpenRouter%20%7C%20OpenAI%20%7C%20Anthropic%20%7C%20Grok-2563eb">
+  <img alt="Providers" src="https://img.shields.io/badge/providers-Ollama%20%7C%20LM%20Studio%20%7C%20MLX%20%7C%20llama.cpp%20%7C%20OpenRouter%20%7C%20Requesty%20%7C%20OpenAI%20%7C%20Anthropic%20%7C%20Grok-2563eb">
   <img alt="Apple Silicon" src="https://img.shields.io/badge/Apple%20Silicon-optimized-111827">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-111827">
 </p>
@@ -288,6 +288,7 @@ A handful of moves worth knowing right away:
 | `mlx` | `http://localhost:8080/v1` | Fastest inference on Apple Silicon (via `mlx_lm.server`) |
 | `llamacpp` | `http://localhost:8080/v1` | Direct GGUF serving (via `llama-server`) |
 | `openrouter` | `https://openrouter.ai/api/v1` | Cloud A/B with `/compare`; access to frontier models and Fusion |
+| `requesty` | `https://router.requesty.ai/v1` | OpenAI-compatible gateway to many hosted models; `REQUESTY_BASE_URL=https://router.eu.requesty.ai/v1` for the EU region |
 | `openai` | `https://api.openai.com/v1` | Direct provider access with your own key |
 | `anthropic` | `https://api.anthropic.com/v1` | Native Messages API with your own Anthropic API key |
 | `openai-codex` | `https://chatgpt.com/backend-api/codex/responses` | ChatGPT/Codex subscription OAuth via `/login openai-codex` |
@@ -295,7 +296,7 @@ A handful of moves worth knowing right away:
 
 Switch at runtime with `/provider <name>`. Endpoint overrides:
 `OLLAMA_BASE_URL`, `LM_STUDIO_BASE_URL`, `MLX_BASE_URL`, `LLAMACPP_BASE_URL`,
-`OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `OPENAI_CODEX_BASE_URL`. The Grok OAuth proxy is fixed to
+`REQUESTY_BASE_URL`, `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `OPENAI_CODEX_BASE_URL`. The Grok OAuth proxy is fixed to
 xAI's first-party host so subscription tokens cannot be redirected elsewhere.
 API providers require an API key (set via [`/auth`](#cost-and-credentials) or
 env var); `openai-codex` requires `/login openai-codex`; `grok` requires
@@ -320,6 +321,7 @@ for the live session choice and `(default)` for what's persisted on disk.
 | `mlx` | `mlx-community/Qwen2.5-Coder-7B-Instruct-4bit` |
 | `llamacpp` | `gpt-3.5-turbo` |
 | `openrouter` | `qwen/qwen-2.5-coder-32b-instruct` |
+| `requesty` | `anthropic/claude-haiku-4-5` |
 | `openai` | `gpt-4o-mini` |
 | `anthropic` | `claude-sonnet-5` |
 | `openai-codex` | `gpt-5.6-sol` |
@@ -487,6 +489,7 @@ no change in behavior.
 /auth set openai         paste your OpenAI key, save to file + this session
 /auth set anthropic      paste your Anthropic API key
 /auth set openrouter     paste your OpenRouter key
+/auth set requesty       paste your Requesty key
 /auth clear openai       remove from the file (env stays for this session)
 /login                   browser/device-code login for the active OAuth provider
 /logout                  clear stored login for the active OAuth provider
@@ -1176,12 +1179,14 @@ Resolution order (later overrides earlier):
 ### Environment variables (the useful ones)
 
 ```bash
-BACKEND=ollama                                          # ollama|lm-studio|mlx|llamacpp|openrouter|openai|anthropic|openai-codex|grok
+BACKEND=ollama                                          # ollama|lm-studio|mlx|llamacpp|openrouter|requesty|openai|anthropic|openai-codex|grok
 AGENT_MODEL=qwen2.5-coder:14b                           # overrides the backend default model
 
 OPENAI_API_KEY=sk-...                                   # required for openai
 ANTHROPIC_API_KEY=sk-ant-...                            # required for anthropic
 OPENROUTER_API_KEY=sk-or-...                            # required for openrouter / /compare
+REQUESTY_API_KEY=rqsty-...                              # required for requesty
+REQUESTY_BASE_URL=https://router.requesty.ai/v1         # or https://router.eu.requesty.ai/v1 for the EU region
 OPENAI_BASE_URL=https://api.openai.com/v1               # point at a compatible proxy if needed
 ANTHROPIC_BASE_URL=https://api.anthropic.com/v1         # optional Anthropic-compatible endpoint
 OPENAI_CODEX_BASE_URL=https://chatgpt.com/backend-api    # override Codex backend base if needed
@@ -1378,6 +1383,7 @@ runtime.
 - **MLX** — start `mlx_lm.server --port 8080` against an MLX-format model.
 - **llama.cpp** — `llama-server -m /path/to/model.gguf --host 127.0.0.1 --port 8080 --jinja` (the `--jinja` flag enables native tool calls).
 - **OpenRouter** — set `OPENROUTER_API_KEY` (or use `/auth set openrouter`).
+- **Requesty**: set `REQUESTY_API_KEY` (or use `/auth set requesty`). Get a key at https://app.requesty.ai/api-keys. Use `REQUESTY_BASE_URL` for a regional endpoint such as `https://router.eu.requesty.ai/v1`.
 - **OpenAI** — set `OPENAI_API_KEY` (or use `/auth set openai`). Use `OPENAI_BASE_URL` for a compatible proxy.
 - **Anthropic** — set `ANTHROPIC_API_KEY` (or use `/auth set anthropic`). Use `ANTHROPIC_BASE_URL` for a compatible proxy.
 - **OpenAI Codex** — run `/login openai-codex`, then `/provider openai-codex`.

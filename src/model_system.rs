@@ -344,6 +344,7 @@ pub fn model_supports_effort(backend: BackendName, model: &str) -> bool {
     match backend {
         BackendName::Anthropic => crate::anthropic::model_supports_effort(model),
         BackendName::Openrouter
+        | BackendName::Requesty
         | BackendName::OpenAi
         | BackendName::OpenAiCodex
         | BackendName::Grok => true,

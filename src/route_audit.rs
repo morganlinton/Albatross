@@ -225,17 +225,19 @@ pub fn effective_effort(
                 "applied"
             },
         ),
-        BackendName::OpenAi | BackendName::Grok => match requested.openai_reasoning_effort() {
-            Some(effective) => (
-                Some(effective.to_string()),
-                if effective == requested.as_str() {
-                    "applied"
-                } else {
-                    "mapped"
-                },
-            ),
-            None => (None, "disabled"),
-        },
+        BackendName::Requesty | BackendName::OpenAi | BackendName::Grok => {
+            match requested.openai_reasoning_effort() {
+                Some(effective) => (
+                    Some(effective.to_string()),
+                    if effective == requested.as_str() {
+                        "applied"
+                    } else {
+                        "mapped"
+                    },
+                ),
+                None => (None, "disabled"),
+            }
+        }
         BackendName::Anthropic => {
             let Some(effective) = crate::anthropic::effective_effort(model, requested) else {
                 return (None, "unsupported");

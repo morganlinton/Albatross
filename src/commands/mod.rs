@@ -208,7 +208,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("/skills", "List discovered Agent Skills and diagnostics"),
     (
         "/provider",
-        "Switch model provider (ollama, lm-studio, mlx, llamacpp, openrouter, openai, anthropic, openai-codex, grok); /backend remains an alias",
+        "Switch model provider (ollama, lm-studio, mlx, llamacpp, openrouter, requesty, openai, anthropic, openai-codex, grok); /backend remains an alias",
     ),
     (
         "/theme",

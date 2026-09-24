@@ -9,6 +9,7 @@ pub enum BackendName {
     Mlx,
     LlamaCpp,
     Openrouter,
+    Requesty,
     OpenAi,
     Anthropic,
     OpenAiCodex,
@@ -23,6 +24,7 @@ impl BackendName {
             BackendName::Mlx => "mlx",
             BackendName::LlamaCpp => "llamacpp",
             BackendName::Openrouter => "openrouter",
+            BackendName::Requesty => "requesty",
             BackendName::OpenAi => "openai",
             BackendName::Anthropic => "anthropic",
             BackendName::OpenAiCodex => "openai-codex",
@@ -36,6 +38,7 @@ impl BackendName {
             "mlx" => Some(Self::Mlx),
             "llamacpp" | "llama-cpp" | "llama.cpp" => Some(Self::LlamaCpp),
             "openrouter" => Some(Self::Openrouter),
+            "requesty" => Some(Self::Requesty),
             "openai" | "open-ai" => Some(Self::OpenAi),
             "anthropic" | "claude" => Some(Self::Anthropic),
             "openai-codex" | "open-ai-codex" | "codex" | "chatgpt" => Some(Self::OpenAiCodex),
@@ -50,6 +53,7 @@ impl BackendName {
             Self::Mlx,
             Self::LlamaCpp,
             Self::Openrouter,
+            Self::Requesty,
             Self::OpenAi,
             Self::Anthropic,
             Self::OpenAiCodex,
@@ -63,9 +67,12 @@ impl BackendName {
     pub fn is_local(&self) -> bool {
         match self {
             Self::Ollama | Self::LmStudio | Self::Mlx | Self::LlamaCpp => true,
-            Self::Openrouter | Self::OpenAi | Self::Anthropic | Self::OpenAiCodex | Self::Grok => {
-                false
-            }
+            Self::Openrouter
+            | Self::Requesty
+            | Self::OpenAi
+            | Self::Anthropic
+            | Self::OpenAiCodex
+            | Self::Grok => false,
         }
     }
 
@@ -146,6 +153,14 @@ pub fn backend(name: BackendName) -> BackendDescriptor {
             is_local: false,
             openrouter: OpenRouterConfig::default(),
         },
+        BackendName::Requesty => BackendDescriptor {
+            name,
+            base_url: std::env::var("REQUESTY_BASE_URL")
+                .unwrap_or_else(|_| "https://router.requesty.ai/v1".into()),
+            api_key: std::env::var("REQUESTY_API_KEY").unwrap_or_default(),
+            is_local: false,
+            openrouter: OpenRouterConfig::default(),
+        },
         BackendName::OpenAi => BackendDescriptor {
             name,
             base_url: std::env::var("OPENAI_BASE_URL")
@@ -215,6 +230,7 @@ pub fn default_model(b: &BackendDescriptor, override_: Option<&str>) -> String {
         BackendName::Mlx => "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
         BackendName::LlamaCpp => "gpt-3.5-turbo",
         BackendName::Openrouter => "qwen/qwen-2.5-coder-32b-instruct",
+        BackendName::Requesty => "anthropic/claude-haiku-4-5",
         BackendName::OpenAi => "gpt-4o-mini",
         BackendName::Anthropic => "claude-sonnet-5",
         BackendName::OpenAiCodex => "gpt-5.6-sol",
@@ -227,6 +243,11 @@ pub fn validate(b: &BackendDescriptor) -> Result<()> {
     if matches!(b.name, BackendName::Openrouter) && b.api_key.is_empty() {
         return Err(anyhow!(
             "OPENROUTER_API_KEY is required when BACKEND=openrouter."
+        ));
+    }
+    if matches!(b.name, BackendName::Requesty) && b.api_key.is_empty() {
+        return Err(anyhow!(
+            "REQUESTY_API_KEY is required when BACKEND=requesty."
         ));
     }
     if matches!(b.name, BackendName::OpenAi) && b.api_key.is_empty() {
@@ -309,6 +330,7 @@ mod tests {
         assert!(BackendName::Mlx.is_local());
         assert!(BackendName::LlamaCpp.is_local());
         assert!(!BackendName::Openrouter.is_local());
+        assert!(!BackendName::Requesty.is_local());
         assert!(!BackendName::OpenAi.is_local());
         assert!(!BackendName::Anthropic.is_local());
         assert!(!BackendName::OpenAiCodex.is_local());
@@ -336,6 +358,25 @@ mod tests {
         let model = default_model(&backend, None);
         assert_eq!(model, "grok-4.5");
         assert_eq!(backend.base_url, crate::xai_oauth::INFERENCE_BASE_URL);
+    }
+
+    #[test]
+    fn parses_requesty_backend() {
+        assert_eq!(BackendName::parse("requesty"), Some(BackendName::Requesty));
+        assert_eq!(BackendName::Requesty.as_str(), "requesty");
+        assert!(BackendName::all().contains(&BackendName::Requesty));
+    }
+
+    #[test]
+    fn defaults_requesty_to_claude_haiku() {
+        let model = default_model(&descriptor(BackendName::Requesty), None);
+        assert_eq!(model, "anthropic/claude-haiku-4-5");
+    }
+
+    #[test]
+    fn requesty_requires_api_key() {
+        let desc = descriptor(BackendName::Requesty);
+        assert!(validate(&desc).is_err());
     }
 
     #[test]
